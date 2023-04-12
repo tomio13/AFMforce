@@ -1,0 +1,115 @@
+#!/usr/bin/env python
+from matplotlib import use
+use("TKAgg")
+from AFMforce import *
+from matplotlib import pyplot as pl
+pl.ion()
+
+import sys, os
+from time import sleep
+
+#add a callback to quit on 'q':
+def quit_key(event):
+    if event.key in "qQ":
+        #die baby, die:
+        sys.exit(0)
+#end quit_key
+
+
+if __name__ == '__main__':
+    #We are called with a file name
+    args = sys.argv
+    saving = False
+
+    if len(args) < 2:
+        print("Call with the name of a jpk-force file")
+        sys.exit(0)
+    else:
+        if args[1] == "-s":
+            print("save activated")
+            saving = True
+            args.pop(1)
+            ext = "png"
+        elif args[1] == "-svg":
+            print("save activated")
+            saving = True
+            args.pop(1)
+            ext = "svg"
+        #end if save
+
+        fig = pl.figure()
+        plt = fig.add_subplot(111)
+        #add the quit function:
+        #one can disconnect the other bindings by:
+        #fig.canvas.mpl_disconnect(fig.canvas.manager.key_press_handler_id)
+        #but we keep that as well, since it does nothing on 'q'
+        fig.canvas.mpl_connect("key_press_event", quit_key)
+
+        N = len(args[1:])
+
+        for i in args[1:]:
+            if ".jpk-force" in i:
+                a = JPKforce(i)
+            elif '.spm.txt' in i:
+                a = Brukerforce(i)
+            else:
+                a = Pavoneforce(i)
+
+            if a == {}:
+                print("No data found")
+                continue
+            #end if
+
+            plt.cla()
+            #find the extension segment:
+            for ii in a.segments:
+                a.segment = ii
+
+                #turned off baseline correction to have stalling data
+                #in the right position for jpk-force files
+                a.baseline( 0.3, order= 1)
+                #a.find_contact_point()
+                # Z0 = Contact_point(a.distance, a.force, 90, 30, 'Gauss')
+                # Z = a.Z
+                Z = a.distance
+                F = a.force
+                unit = a.Z_unit
+                vunit = a.force_unit
+
+                if a.Z_unit == 'm':
+                    Z = a.Z*1E6
+                    unit = 'micron'
+
+                if a.force_unit == 'N':
+                    F = F*1E9
+                    vunit = 'nN'
+                elif a.force_unit == 'm':
+                    F = F*1E9
+                    vunit = 'nm'
+
+                plt.plot(Z, F, '+', alpha=0.6)
+            #end for
+
+            ttext = "Z piezo %s" %unit
+            plt.set_xlabel(ttext)
+            ttext = "Force, %s" %vunit
+            plt.set_ylabel(ttext)
+            plt.set_title(os.path.split(i)[-1])
+
+            if saving:
+                fname = "%s.%s" %(os.path.splitext(i)[0], ext)
+                pl.savefig(fname, \
+                        dpi=150, transparent=True)
+            #pl.draw()
+            pl.ion()
+            fig.canvas.draw_idle()
+            #fig.canvas.draw()
+            pl.ioff()
+
+            if N > 1:
+                txt = input("Press ENTER")
+
+            print("Spring constant %.6f" %a.force_constant)
+        #end for
+        pl.show()
+        fig.close()
