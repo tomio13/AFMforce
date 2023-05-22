@@ -1,0 +1,626 @@
+#!/usr/bin/env python
+""" Another force analysis tool for investigating force curves.
+    This time try to do some automatic qualification and quantification based on
+    external parameters but also comparison between the various parts of the curves.
+    Estimate contact point or try finding out if there is none.
+    Difficulty to be expected: a strongly repelling surface or a soft, indented
+    one will have a similar run, but while the former has no contact value,
+    the later has a contact as soon as the curve leaves the zero force line.
+    Also try to classify break apart, WLC extension, tether pulling and
+    puncture events.
+
+    Author:     Tomio
+    Email:      haraszti@dwi.rwth-aachen.de
+    Licence:    CC(4)
+    Warranty:   None
+    Date:       2021
+"""
+
+import numpy as nu
+from matplotlib import pyplot as pl
+from AFMforce import *
+import os
+import sys
+from glob import glob
+from BatchAnalyzer import Report, ReadConf, SaveData
+
+pl.ioff()
+
+configfile= 'config.txt'
+config = {'dir': './', 'outdir': './', 'dpi': 150, 'ext':'.png',
+        'fmask': '*.txt',
+         'SmoothRadius': 150, 'SmoothWidth': 50, 'SmoothType': 'Gauss',
+         'BgOrder': 1,
+         'Radius': 1.0, # micrometer
+         'Poisson_ratio': 0.5,
+         'Hertz_segment_part': 5,
+         'DataType': 'Bruker',
+         'Z_offset': 10.0,
+         'with_i0': False,
+         'BaseEnd': 0.3}
+# not set by default
+#         'SensorResponse': -1,
+#         'SpringConstant': -1
+#         'Fmax': -1    maximal force used globally (limit the data below this)
+#         'Zmax': -1
+#         'Fmax.E': -1  maximal force used for the Hertz or JKR models
+
+args = sys.argv[1:]
+if len(args) > 0:
+    if os.path.isfile(args[0]):
+        configfile = args[0]
+
+    else:
+        print('Invalid config file name')
+        sys.exit(0)
+    # end if argument file exists
+config = ReadConf(configfile, config)
+
+# all configuration values are single ones, no lists needed
+# clean it up!
+for k in config:
+    config[k] = config[k][-1]
+
+# now report the config:
+
+indir = config['dir']
+outdir = config['outdir'] if config['outdir'] != 'dir' else indir
+
+if not os.path.isdir(outdir):
+    os.mkdir(outdir)
+# end checking / making outdir
+
+rep = Report(outdir, header='AFM force curve analysis version 0.15', add_time= False)
+
+# lazy dump of configuration:
+rep.write('Configuration settings:')
+for k,v in config.items():
+    rep.write(k, 'is set to', v)
+
+rep.write('Force is set to nN, distance to micrometers')
+rep.write('************************')
+
+lst = glob(os.path.join(indir, config['fmask']))
+N = len(lst)
+
+if N < 1:
+    rep.write('No files were found, exiting')
+    sys.exit(0)
+# end if nothing was found
+
+lst.sort()
+
+if 'N' in config and N > config['N']:
+    N = int(config['N'])
+    lst = lst[:N]
+    rep.write('Reduced list to', N,'files')
+# end if N is preset
+
+Zmax = -1 if not 'Zmax' in config else config['Zmax']
+Rsmooth = int(config['SmoothRadius'])
+Wsmooth = config['SmoothWidth']
+bgOrder = int(config['BgOrder'])
+dpi = int(config['dpi'])
+ext = config['ext']
+dataType = config['DataType'].lower()
+
+rowdata = {}
+results = []
+
+for fn in lst:
+    if dataType == 'jpk':
+        a = JPKforce(fn)
+
+    elif dataType == 'bruker':
+        a = Brukerforce(fn)
+
+    elif dataType == 'pavone':
+        a = Pavoneforce(fn)
+
+    else:
+        print('Unknown data format!')
+        sys.exit(1)
+    # end which file type to load
+
+    fnn = os.path.split(fn)[-1]
+
+    if a.dataset == {}:
+        rep.write('\mUnable to load data', fnn, color='red')
+        continue
+    else:
+        rep.write('\nLoaded', fnn, color='cyan')
+    # end if we have data
+
+    if 'SensorResponse' in config and config['SensorResponse'] > 0:
+        print('setting sensor response')
+        a.sensor_response= config['SensorResponse']
+    if 'SpringConstant' in config and config['SpringConstant'] > 0:
+        print('setting spring constant')
+        a.force_constant = config['SpringConstant']
+
+    fnn = os.path.splitext(fnn)[0]
+    rowdata.update(
+            {'filename': fnn,
+             'X': a.position[0],
+             'Y': a.position[1]}
+            )
+
+    if 'sensor_response' in config:
+        a.sensor_response = config['sensor_response']
+        rep.write('Set sensor_response in original units', a.Z_unit, '/ V')
+
+    if 'force_constant' in config:
+        a.force_constant = config['force_constant']
+        rep.write('Set force constant in units', a.force_unit,'/', a.Z_unit)
+
+    # pick segments and set units: Z is in microns, F is in nN
+    Za = Fa = Zr = Fr = None
+
+    # desired maximal piezo distance:
+    if Zmax > 0:
+        rep.write('Applying Zmax:', Zmax)
+        if a.Z_unit == 'nm':
+            a.Zmax = Zmax * 1000
+        elif a.Z_unit == 'm':
+            a.Zmax = Zmax * 1E-6
+        else:
+            a.Zmax = Zmax
+
+    for s in a.segments:
+        a.segment = s
+        if a.segment_name == 'approach':
+            # a.Z is piezo position,
+            # a.distance is corrected with deflection
+            Za = a.distance
+            if a.Z_unit == 'nm':
+                Za /= 1000.0
+            elif a.Z_unit == 'm':
+                Za *= 1E6
+
+            Fa = a.force
+            if a.force_unit == 'N':
+                Fa *= 1E9
+        elif a.segment_name == 'retract':
+            Zr = a.distance
+            if a.Z_unit == 'nm':
+                Zr /= 1000.0
+            elif a.Z_unit == 'm':
+                Zr *= 1E6
+
+            Fr = a.force
+            if a.force_unit == 'N':
+                Fr *= 1E9
+        # end if segment found
+    #end looping through the segments
+    if Za is None or Zr is None:
+        rep.write('Segments not found error!', color='red')
+        continue
+
+    #########################################
+    # Now we start really working...
+    # Baseline correction: forces at far distance are 0
+    if 'BaeEndZ' in config:
+        EndzN = (Za > (Za.max()-config['BaseEndZ'])).nonzero()[0][0]
+        Fa = Baseline(Za, Fa, end= config['BaseEnd'], order= bgOrder, endN= EndzN)['data']
+        EndzN = (Zr > (Zr.max()-config['BaseEndZ'])).nonzero()[0][0]
+        Fr = Baseline(Zr, Fr, end= config['BaseEnd'], order= bgOrder, endN= EndzN)['data']
+
+    else:
+        EndzN = int(Za.size * config['BaseEnd'])
+        Fa = Baseline(Za, Fa, end= config['BaseEnd'], order= bgOrder)['data']
+        EndzN = int(Zr.size * config['BaseEnd'])
+        Fr = Baseline(Zr, Fr, end= config['BaseEnd'], order= bgOrder)['data']
+    # end if baseline correction
+
+    # find the surface contact on the retraction curve, because
+    # this often has adhesion, thus negative forces, which makes
+    # the process easier
+    # Zcontact = Contact_point(Zr, Fr,
+    #            Rsmooth, Wsmooth, config['SmoothType'],
+    #            use_deriv= False)
+    #
+    # If we had a viscous drift during contact, Za.min() != Zr.min()!
+    dZ0 = Za.min() - Zr.min()
+    rep.write('Viscous offset in contact:', dZ0,'microns', color='blue')
+
+    # To compensate pure viscous shift, we can
+    # shift the start of the curves to the same point:
+    # Za -= Za.min()
+    # Zr -= Zr.min()
+
+    # use the raw data:
+    Zcontact = Contact_point(Zr, Fr, 0,0, use_deriv=False)
+    ZthicknessR = Zcontact - Zr.min()
+
+    rep.write('Estimated contact point at:', Zcontact, 'micrometers')
+    rep.write('Estimated contact thickness:', ZthicknessR, 'micrometers')
+    # shifts both approach and retract curves to this point as zero
+    Za -= Zcontact
+    Zr -= Zcontact
+
+    # limit F to F.max if it is set:
+    if 'Fmax' in config:
+        rep.write('Applying maximal force:', config['Fmax'], 'nN')
+        indx=  Fa < config['Fmax']
+
+        if indx.sum() > 5:
+            Fa = Fa[indx]
+            Za = Za[indx]
+        else:
+            rep.write('Too low Fmax!', color='red')
+
+        indx = Fr < config['Fmax']
+        if indx.sum() > 5:
+            Fr = Fr[indx]
+            Zr = Zr[indx]
+        else:
+            rep.write('retraction: Too low Fmax!', color='red')
+        del(indx)
+    # end limiting to Fmax
+
+    pl.clf()
+    pl.plot(Za, Fa, '-', alpha= 0.5)
+    pl.xlabel('distance, $\mu$m')
+    pl.ylabel('force, nN')
+    pl.plot(Zr, Fr, '-', alpha= 0.5)
+
+    # a -- approach, r -- retract; s -- smooth
+    Zas = Smooth(Za, Rsmooth, Wsmooth, config['SmoothType'])
+    Zrs = Smooth(Zr, Rsmooth, Wsmooth, config['SmoothType'])
+    Fas = Smooth(Fa, Rsmooth, Wsmooth, config['SmoothType'])
+    Frs = Smooth(Fr, Rsmooth, Wsmooth, config['SmoothType'])
+
+    pl.plot(Zas, Fas, '-')
+    pl.plot(Zrs, Frs, '-')
+    # draw the contact line:
+    pl.plot([0,0], [Fas.min(), Fas.max()], 'g--')
+    # paint the base line:
+    pl.plot([Zas.min(), Zas.max()], [0,0], '-', color='white')
+
+    # if we do not have a jump to contact, this is the point
+    # after which we leave the zero force part...
+    intindx = (Fas < 0).nonzero()[0]
+    if len(intindx) < 1:
+        rep.write('Non negative force curve, baseline error!', color= 'red')
+        continue
+    else:
+        intindx= intindx[0]
+
+    # this is the work done from deviating from zero to full contact
+    # at maximal force
+    # if there is a jump to contact, this interpretation is gone...
+    # integral force vs. length is 1E-15J we convert to 1E-18J = aJ
+    ContactArea1 = nu.trapz(Fas[:intindx], Zas[:intindx])*1000
+    # copy the slice, or it gets overwritten later!
+    yplotarea = Frs[:intindx].copy()
+    yplotarea[ yplotarea < 0] = 0
+    # display the integrated part:
+    pl.fill_between(Zas[:intindx], Fas[:intindx], yplotarea, color='green')
+    del(yplotarea)
+
+    # find the negative area in the return curve:
+    # the contact point is, where the Frs first crosses the axis
+    # this was identified with ContactPoint above, setting Z0
+    intindx = (Zrs < 0).nonzero()[0]
+    if len(intindx) < 1:
+        # this should not happen:
+        rep.write('Contact point not defined error!', color= 'red')
+        pl.savefig(os.path.join(outdir, '%s-summary-plot%s' %(fnn, ext)), dpi= dpi,
+            bbox_inches= 'tight', pad_inches= 0)
+        continue
+    else:
+        intindx = intindx[-1]
+
+    # this is the work the surface does until we get to F = 0
+    # during retraction:
+    ContactArea2 = nu.trapz(Frs[:intindx], Zrs[:intindx])*1000
+    rep.write('Area to contact in approach:', ContactArea1, 'aJ')
+    rep.write('Remaining adhesion energy in retraction:', ContactArea2, 'aJ')
+    rep.write('Estimated dissipation', ContactArea1 - ContactArea2, 'aJ')
+
+    rowdata.update(
+                    {'Compression work (aJ)': ContactArea1,
+                     'Release work retract (aJ)': ContactArea2,
+                     'Dissipated in contact (aJ)': ContactArea1 - ContactArea2}
+                  )
+
+    # we need a noise level to tell where is the last jump apart if there is any
+    noiselevel = min(-5*Frs[-EndzN:].std(), Frs[-EndzN:].min())
+    # we estimate the jump apart happened when the force curve last
+    # came above this value
+    ijump = (Frs < noiselevel).nonzero()[0]
+
+    # adhesion force:
+    Fadh = Frs.min()
+    rep.write('Noise level, noiselevel', 'nN')
+    rep.write('Maximal adhsion force', Fadh, 'nN')
+    rowdata['Maximal adheson (nN)'] = Fadh
+
+    if len(ijump) > 0:
+        is_adhesion = True
+        # we have some adhesion events!
+        ijump = ijump[-1]
+        # the work under F=0, we do on the surface until we can
+        # break away
+        # again, the adhesion work is in 1E-15 J -> 1E-18 J = aJ
+        adhArea = nu.trapz(Frs[intindx:ijump], Zrs[intindx:ijump])*1000
+        adhDist = Zrs[ijump]
+
+        rep.write('Adhesion energy:', adhArea, 'aJ', color='cyan')
+        rep.write('Adhesion distance:', adhDist, 'micrometers')
+
+        # add the info to the plot:
+        pl.plot([adhDist], [Frs[ijump]], 'x', color='blue')
+        pl.fill_between(Zrs[intindx:ijump], Frs[intindx:ijump],
+                nu.zeros(ijump-intindx),
+                color='yellow')
+
+    else:
+        is_adhesion = False
+        rep.write('No adhesion was found')
+        adhArea = 0
+        adhDist = 0
+    # end if adhesion
+    rowdata.update(
+            {'Noise level (nN)': noiselevel,
+             'Adhesion energy (aJ)': adhArea,
+             'Adhesion distance (micron)': adhDist}
+            )
+
+    # approach contact
+    #ZcontactApproach = Contact_point(Za, Fa,
+    #        Rsmooth, Wsmooth, config['SmoothType'], use_deriv= False)
+    # use the raw data as much as possible
+    # last point of contact or maximal contact distance
+    ZcontactApproach = Contact_point(Za, Fa, use_deriv= False)
+
+    rep.write('Contact point from approach curve is:', ZcontactApproach, 'micron')
+    rowdata.update(
+            {'Contact point approach (micron)': ZcontactApproach,
+             'Thickness approach (micron)': ZcontactApproach - Za.min(),
+             'Thickness retract (micron)': ZthicknessR}
+            )
+
+    pl.plot([ZcontactApproach], [0], 'x', color='lime')
+
+    pl.savefig(os.path.join(outdir, '%s-summary-plot%s' %(fnn, ext)), dpi= dpi,
+            bbox_inches= 'tight', pad_inches= 0)
+    # a new step:
+    # depending on if we seek indentation or interaction,the approach
+    # is interpreted differently
+
+    # we use the retraction contact point for indentation 0,
+    # it should be closer to the real than the approach one
+    #
+    # all indentation models provide a = sqrt(R\delta), a^3 = f(F)
+    # the contact area is indentation depth * bead radius
+    fout = '%s-indentation-data.txt' %fnn
+    SaveData(['force (nN)', 'indentation (micron)', 'contact area (micron^2)'],
+            zip(*[Fa, -Za, (-Za*config['Radius'])]),
+            os.path.join(outdir, fout), '# indentation data', report= rep)
+
+    indx = Za < 0
+    if sum(indx) < 4:
+        rep.write('shifting indentaiton to get positive value', color='white')
+        Za = Za - ZcontactApproach
+        Zas = Zas - ZcontactApproach
+        indx = Za < 0
+        if indx.sum() < 4:
+            rep.write('Cannot get indentation right!', color='red')
+            continue
+
+    # try fitting Hertz but to a segment only:
+    pl.clf()
+    if config['Hertz_segment_part'] > 0:
+        # Nl = int(len(Za[indx])/config['Hertz_segment_part'])
+        # equivalent:
+        Nl = int(indx.sum()/config['Hertz_segment_part'])
+        if Nl < 4:
+            rep.write('Nl:', Nl,'too low, decrease Hertz_segment_par from!',
+                    config['Hertz_segment_part'],
+                    color= 'red')
+            rep.write('Try soft contact point')
+            Za = Za - ZcontactApproach
+            Zas = Zas - ZcontactApproach
+            indx = Za < 0
+
+            Nl = int(indxi.sum()/config['Hertz_segment_part'])
+            if Nl < 3:
+                rep.write('Failed getting a Hertz segment (Nl:', Nl,')', color= 'red')
+                sys.exit(0)
+        # end correcting indentation part
+
+        rep.write('Fit Hertz model to the closest 1/',config['Hertz_segment_part'],
+                'of the curve, using', Nl, 'points')
+        # we create a segment around the estimated contact point
+        # to have a close to zero background:
+        # the highest i is at around the 0 point:
+        i_0 = (Za > 0.02).nonzero()[0].min()
+        # indx_0 = (Za < 0.1) & (Za > 0)
+        indx_0 = nu.arange(i_0, min(i_0 + Nl, len(Za)), dtype= 'int')
+        # use these two together in the fit:
+        fit_H = fit_Hertz(nu.concatenate([-Za[:Nl], -Za[indx_0]]),
+                        nu.concatenate([Fa[:Nl], Fa[indx_0]]),
+                        nu= config['Poisson_ratio'],
+                        R = config['Radius'],
+                        type= 'ball',
+                        withweight= False,
+                        verbose= False
+                        )
+
+    else:
+        rep.write('Fit Hertz model to full curve')
+        fit_H = fit_Hertz(-Za, Fa,
+                        nu= config['Poisson_ratio'],
+                        R = config['Radius'],
+                        type= 'ball',
+                        withweight= False,
+                        verbose= False
+                    )
+    # plot the linearized representation of the Hertz model
+    pl.plot(Fa[indx], (-Za[indx]*config['Radius'])**1.5)
+    pl.ylabel('$(R\delta)^{1.5}$, $\mu m^3$')
+    pl.xlabel('force, nN')
+
+    pl.plot(fit_H['fitted'], (fit_H['x']*config['Radius'])**1.5, '-',
+                color= 'red', linewidth= 2)
+    pl.savefig(os.path.join(outdir, '%s-indentation-plot%s' %(fnn, ext)),
+                dpi= dpi,
+                bbox_inches= 'tight', pad_inches= 0)
+
+    # now, the classic way
+    pl.clf()
+    # pl.plot(-Za[Za < 0.1], Fa[Za < 0.1], '+')
+    indx = Za < -fit_H['x'].min()
+    if indx.sum() == 0:
+        indx = nu.ones(Za.shape, dtype=bool)
+    print(indx)
+    pl.plot(-Za[indx], Fa[indx], '+')
+    pl.plot(fit_H['x'], fit_H['fitted'], '-', linewidth= 2)
+    pl.xlabel('indentation, $\mu$m')
+    pl.ylabel('force, nN')
+    pl.savefig(os.path.join(outdir, '%s-indentation-Hertz_fit%s' %(fnn, ext)),
+                dpi= dpi,
+                bbox_inches= 'tight', pad_inches= 0)
+
+    # export the results:
+    rep.write('Young\'s modulus:', fit_H['E'], '+/-', fit_H['dE'],
+                'kPa', color='green')
+    SaveData(['indentation, micron', 'force, nN', 'fitted'],
+            zip(*[fit_H['x'], fit_H['y'], fit_H['fitted']]),
+            os.path.join(outdir, '%s-Hertz-fitted-indentation-table.txt' %fnn),
+            '# Herz model fitted indentation data', report= rep)
+
+    rowdata.update(
+            {'Hertz.segment.E (kPa)': fit_H['E'],
+             'Hertz.segment.dE (kPa)': fit_H['dE'],
+             'Hertz.segment.r2': fit_H['r2']}
+            )
+    # switch error estimate to average, so it gets independent of number of points
+    # rowdata['Hertz.segment.err'] = ((fit_H['y'] - fit_H['fitted'])**2).sum()
+    rowdata['Hertz.segment.err'] = ((fit_H['y'] - fit_H['fitted'])**2).mean() \
+                                    if len(fit_H['y']) > 0 else -1
+
+    # now, try an exponential
+    indx = Za < ZcontactApproach + 0.02
+    pl.clf()
+    fitexp = fit_exp(Za[indx], Fa[indx], verbose= True)
+    # to indicate the validity of the exponential approximation, best is
+    # to plot a linearized curve:
+    pl.yscale('log')
+
+    #pl.xlabel('$\delta$, $\mu$m')
+    #pl.ylabel('force, nN')
+    pl.savefig(os.path.join(outdir, '%s-exponential-fit%s' %(fnn, ext)),
+                dpi= dpi,
+                bbox_inches= 'tight', pad_inches= 0)
+
+    rep.write('Fitted exponential with amplitude', fitexp['a'],
+                'nN, exponent:', fitexp['m'], '1/micron')
+    rep.write('Decay length:', -1000/fitexp['m'],'1/nm')
+    rowdata['Exp.Decay.length (nm)'] = -1000/fitexp['m']
+    rowdata['Exp.corr.r2'] = fitexp['r2']
+    # swicth error from sum to mean for comparison independent of N:
+    # rowdata['Exp.fiterr'] = fitexp['chi2']
+    rowdata['Exp.fiterr'] = fitexp['chi2'] / len(fitexp['x']) if len(fitexp['x']) > 0 else -1
+
+    # Now, try a combined fit of Hertz and exponential
+    rep.write('Running Hertz - exponential combined fit', color='cyan')
+    # config['Z_offset'] is to reach beyond the contact point
+    zindx = (Za < (ZcontactApproach + config['Z_offset'])).nonzero()[0][-1]
+    # we do not count on puncture, so go from the wall
+    fit_HE = fit_H_exp(Za[:zindx] - ZcontactApproach , Fa[:zindx],
+                        R= config['Radius'],
+                        nu = config['Poisson_ratio'],
+                        Rg= Rsmooth,
+                        Wg= Wsmooth,
+                        Flim= 0.5,
+                        Fnoise = noiselevel,
+                        with_i0 = config['with_i0'],
+                        verbose= True)
+    pl.savefig(os.path.join(outdir, '%s-Hertz-exp-guess%s' %(fnn, ext)),
+            dpi= dpi, bbox_inches='tight', pad_inches= 0)
+
+    #    if fit_HE['r2'] > config['R2_min']:
+    SaveData(['indentation, micron', 'force, nN', 'fitted'],
+        zip(*[fit_HE['x'], fit_HE['y'], fit_HE['fitted']]),
+        os.path.join(outdir, '%s-Hertz-exp-fitted-indentation-table.txt' %(fnn)),
+        '# Herz model fitted indentation data r2: %.3f' %fit_HE['r2'],
+        report= rep)
+
+    rep.write(['E', fit_HE['E'], '+/-', fit_HE['dE']])
+    rep.write(['amp', fit_HE['amp'], '+/-', fit_HE['damp'], 'nN'])
+    rep.write(['decay', fit_HE['l']*1000, '+/-', fit_HE['dl']*1000, 'nm'])
+
+    # swicth error from sum to mean for comparison independent of N:
+    HE_err  = fit_HE['chi2'] / len(fit_HE['y']) if len(fit_HE['y']) > 0 else -1
+
+    rowdata.update(
+                   { 'HertzExp.E.kPa': fit_HE['E'],
+                     'HertzExp.dE.kPa': fit_HE['dE'],
+                     'HertzExp.d0.micron': fit_HE['d0'],
+                     'HertzExp.amp.nN': fit_HE['amp'],
+                     'HertzExp.damp.nN': fit_HE['damp'],
+                     'HertzExp.l.nm': fit_HE['l']*1000,
+                     'HertzExp.dl.nm': fit_HE['dl']*1000,
+                     'HertzExp.err.nN': HE_err,
+                     'HertzExp.r2': fit_HE['r2']}
+                  )
+
+
+    # Try JKR (if there is adhesion)
+    if is_adhesion:
+        rep.write('Try a JKR fit')
+        fitJKR = fit_JKR(-Zr, Fr, R= config['Radius'], nu= config['Poisson_ratio'])
+        rep.write('JKR model r2', fitJKR['r2'])
+        rep.write('E:', fitJKR['E'], '+/-', fitJKR['dE'],'kPa')
+        rep.write('gamma:', fitJKR['gamma'], '+/-', fitJKR['dgamma'], 'mN/m')
+
+        pl.clf()
+        pl.plot(fitJKR['F'], fitJKR['delta'], '+-')
+        pl.xlabel('force, nN')
+        pl.ylabel('$\delta$, $\mu$m')
+        pl.plot(fitJKR['Fint'], fitJKR['dint'], 'r-', linewidth= 2)
+        pl.savefig(os.path.join(outdir, '%s-JKR-fit%s' %(fnn, ext)),
+                dpi= dpi,
+                bbox_inches= 'tight', pad_inches= 0)
+        # store the results:
+        rowdata['JKR.E.kPa'] = fitJKR['E']
+        rowdata['JKR.dE.kPa'] = fitJKR['dE']
+        rowdata['JKR.gamma.mNm'] = fitJKR['gamma']
+        rowdata['JKR.dgamma.mNm'] = fitJKR['dgamma']
+        rowdata['JKR.FC.nN'] = fitJKR['FC']
+        rowdata['JKR.delta.micron'] = fitJKR['d0']
+        rowdata['JKR.ddelta.micron'] = fitJKR['dd0']
+        rowdata['JKR/r2'] = fitJKR['r2']
+        rowdata['JKR.chi2'] = fitJKR['chi2']/fitJKR['Nfitted'] if fitJKR['Nfitted'] > 0 else -1
+
+        # save data:
+
+        SaveData(['indentation, micron', 'force, nN', 'fitted indent'],
+            zip(*[fitJKR['delta'], fitJKR['F'], fitJKR['fitted']]),
+            os.path.join(outdir, '%s-JKR-fitted-data.txt' %fnn),
+            '# JKR  model fitted indentation data', report= rep)
+    else:
+        # no fit...
+        rep.write('No JKR fit')
+        rowdata['JKR.E.kPa'] = -1
+        rowdata['JKR.dE.kPa'] = -1
+        rowdata['JKR.gamma.mNm'] = -1
+        rowdata['JKR.dgamma.mNm'] = -1
+        rowdata['JKR.FC.nN'] = -1
+        rowdata['JKR.delta.micron'] = -1
+        rowdata['JKR.ddelta.micron'] = -1
+        rowdata['JKR/r2'] = -1
+        rowdata['JKR.chi2'] = -1
+
+    # close the handling in this cycle:
+    results.append(list(rowdata.values()))
+#  end processing file
+
+rep.write('*** Processing files is done ***')
+SaveData(rowdata.keys(), results, os.path.join(outdir,'Summary-table.txt'),
+        '# summary of force curve analysis', report= rep)
+
+rep.write('******************DONE*******************')
+rep.close()

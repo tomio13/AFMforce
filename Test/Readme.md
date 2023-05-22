@@ -18,3 +18,11 @@ Many of these scripts use the BatchAnalyzer library (of like
 It is a super simple thing to do some easy handling, and will
 be uploaded to Github for usage. But do not expect anything
 fancy 8).
+
+# AFM-force-analysis
+run a generic analysis trying to find exponential and spherical
+Hertzian indentation segments, see if the generic indentaion
+matches the data, find maximal adhesion force, adhesion energy,
+contact thickness, etc. A bit of heuristic treatment, but it
+is often useful to have a generic idea of the force distance
+curves.
