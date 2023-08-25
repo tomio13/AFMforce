@@ -1272,7 +1272,7 @@ def find_slope(z,f, factor=3.0, Nfit= 5, verbose=False):
     #print(i)
     errm = errs[i]
 
-    err = (f[:iend] - nu.polyval(fit,z[:iend]))**2 / nu.float(iend)
+    err = (f[:iend] - nu.polyval(fit,z[:iend]))**2 / float(iend)
     indx = (err <= errm).nonzero()[0]
     #if it is valid, refit:
     if len(z[indx]) > 2:
