@@ -64,14 +64,14 @@ class AFMforce(object):
         self._Zmax_ = -1.0  #range limit, valid if > 0.0
 
         #index of data to be returned. Set by setting Zmax
-        self._indx_ = nu.zeros(0)  #index for filtering
+        self._indx_ = nu.empty(0)  #index for filtering
 
         #perform the actual import:
         if filename != "" and os.path.isfile(filename):
             #perform the import
             self.read_data(filename)
 
-        if self.segments != []:
+        if self.segments:
             self.segment = self.segments[0]
     #end __init__
 
@@ -122,7 +122,6 @@ class AFMforce(object):
 
         else:
             raise ValueError("Invalid segment request %d" %value)
-
     #end segment
 
     @property
@@ -163,7 +162,7 @@ class AFMforce(object):
         if "position" in a and "data" in a["position"]:
             return a['position']["data"]
         else:
-            return []
+            return nu.empty(0)
     #end position
 
     @property
@@ -203,7 +202,7 @@ class AFMforce(object):
         else:
             raise ValueError( "Bogous force data!" )
 
-        if self._indx_ != [] :
+        if self._indx_.size > 0:
             return b[self._indx_]
         else:
             return b
@@ -278,7 +277,7 @@ class AFMforce(object):
     @Zmax.setter
     def Zmax(self, zm):
         #reset before applying the filter:
-        self._indx_ = []
+        self._indx_ = nu.empty(0)
         self._Zmax_ = zm
         #keep Zmax, because it may be meaningful for other segments!
 
@@ -321,7 +320,7 @@ class AFMforce(object):
             Z = Z - self.Z0
 
         #return the result (filtered if index is set)
-        if self._indx_ != []:
+        if self._indx_.size >0:
             return Z[self._indx_]
         else:
             return Z
@@ -362,10 +361,10 @@ class AFMforce(object):
         a = self.full_segment
 
         #this variable is not clear yet, I need test data on this!
-        t = []
+        t = nu.empty(0)
         if 'time' in a and "data" in a['time']:
             t = a['time']['data']
-            if self._indx_ != []:
+            if self._indx_.size > 0:
                 t = t[self._indx_]
 
         return t
@@ -428,9 +427,9 @@ class AFMforce(object):
         if "force" in a and 'deflection' in a['force']:
             defl  = a["force"]['deflection']
         else:
-            return []
+            return nu.empty(0) 
 
-        if self._indx_ != []:
+        if self._indx_.size > 0:
             return defl[self._indx_]
         else:
             return defl
@@ -464,11 +463,11 @@ class AFMforce(object):
             a = a["force"]
         else:
             print("vertical deflection was not measured!")
-            return []
+            return nu.empty(0)
 
         #now we are within data['vDeflection'][...]
         if 'raw_data' in a:
-            if self._indx_ != []:
+            if self._indx_.size > 0:
                 return a['raw_data'][self._indx_]
             else:
                 return a['raw_data']
@@ -487,7 +486,7 @@ class AFMforce(object):
 
         #set, if it fits to the distance array:
         if 'force' in a \
-                and data != [] \
+                and data.size > 0 \
                 and len(data) == len(self.Z):
             a = a['force']
             a['raw_data'] = data
@@ -530,7 +529,8 @@ class AFMforce(object):
         self.Zmax = -1 #this takes care of turning it off
 
         z = self.Z
-        if z != []:
+        # check order of the array, if it was not empty
+        if z.size > 0:
             if (z[-1] - z[0]) < 0.0:
                 print("needs to be inverted")
                 #run through the segment keys, and find data within
@@ -1302,7 +1302,7 @@ def find_slope(z,f, factor=3.0, Nfit= 5, verbose=False):
 #end find_slope
 
 
-def FindMinima(f, dN= 50, Z=[], dZ = -1.0, minf = None, verbose=False):
+def FindMinima(f, dN= 50, Z= nu.empty(0), dZ = -1.0, minf = None, verbose=False):
     """ find the local minima in a force curve
         Use a simple local minimum search, then check that
         this value is minimal in the next dN points as well.
@@ -1310,7 +1310,7 @@ def FindMinima(f, dN= 50, Z=[], dZ = -1.0, minf = None, verbose=False):
         miss the last point.
 
         Parameters:
-        f       force data
+        f       force data (ndarray)
         dN      the number of data points to consider for a local
                 segment
                 If dZ is specified, it is taken priority. However, if
@@ -1349,9 +1349,9 @@ def FindMinima(f, dN= 50, Z=[], dZ = -1.0, minf = None, verbose=False):
     i=0
     currpos = 0
     minlist = []
-    #hit marks if we have found a local minimum:
-    #Going from left to right,
-    #if the first minimum is on the left edge, it is a local one
+    # hit marks if we have found a local minimum:
+    # Going from left to right,
+    # if the first minimum is on the left edge, it is a local one
     hit = True
     while (i < N):
 
@@ -1432,6 +1432,7 @@ def FindMinima(f, dN= 50, Z=[], dZ = -1.0, minf = None, verbose=False):
     #end verbose
     return minlist
 #end of FindMinima
+
 
 def Indentation(Z, Defl, z0=0, deflection0=0, defN= 50,\
         auto=False, verbose=False):

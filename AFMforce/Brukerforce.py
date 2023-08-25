@@ -208,7 +208,8 @@ def bruker_importer(filename):
                 # "\@2:DeflectionLimitLockIn3LSADC1: V (0.0000000057 V/LSB) 24.57600 V"
                 #and we have to handle all these
                 if len(vlist) == 1:
-                    v = vlist[0].strip() if v != [] else ""
+                    # v = vlist[0].strip() if v != [] else ""
+                    v = vlist[0].strip() if v else ""
                 else:
                     #o.k., we have more than a value here
                     vv= vlist[0].strip()
@@ -348,7 +349,7 @@ def bruker_importer(filename):
         elif len(data) == dlN:
             for j in range(len(data)):
                 if dline[j] != '' and not dline[j].isspace():
-                    data[j].append( float(dline[j]) )
+                    data[j].append(float(dline[j]))
         else:
             print('Corrupted line found at', i, '/', N,':',
                     len(data), '/', dlN)
