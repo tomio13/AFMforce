@@ -1247,37 +1247,43 @@ def find_slope(z,f, factor=3.0, Nfit= 5, verbose=False):
         return 0.0
 
     #estimate a maximal error level:
-    errm = factor * min(errs)
+    # errm * factor
+    errm = min(errs)
 
-    #is the noise anhomogeneous?
+    #is the noise inhomogeneous?
+    # the noise range should be less than factor*errm
     if (max(errs) - errm) > factor*errm :
-        #Now we may have some noisy part
-        errs.sort()
-        limit = errs[int(0.75*len(errs))]
-        #collect those who are below this
-        indx = map(errs.index, filter(lambda x: x < limit, errs))
-        #shrink our lists:
-        fits = [fits[i] for i in indx]
-        errs = [errs[i] for i in indx]
+        # we sort the errors, but also the corresponding fits:
+        err_sorted = sorted(enumerate(errs), key= lambda x: x[1])
+        errs = [i[1] for i in err_sorted]
+        fits = [fits[i[0]] for i in err_sorted]
+
+        # take the best 75% of the list:
+        end_indx = int(0.75*len(errs))
+        limit = errs[end_indx]
+        # collect those who are below this
+        if end_indx > 0:
+            errs = errs[0:end_indx]
+            fits = fits[0:end_indx]
     #end if
 
-    #get the most negative slope (steepest, but negative):
+    # get the most negative slope (steepest, but negative):
     fit = min(fits, key=(lambda x: x[0]))
-    #the elements are numarray objects, index will not work
-    #find the one which was the minimum:
-    for i in range(len(fits)):
-        if fits[i][0] == fit[0] and fits[i][1]==fit[1]:
-            break
-    #end for
-    #print(i)
+    # the elements are numarray objects, index will not work
+    # find the one which was the minimum:
+    i = [i for i, f in enumerate(fits) if f[0] == fit[0] and f[1] == fit[1]]
+    i = i[0]
+
     errm = errs[i]
 
-    err = (f[:iend] - nu.polyval(fit,z[:iend]))**2 / float(iend)
+    # reevaluate the steepest fit to find where it matches the best:
+    err = (f[:iend] - nu.polyval(fit, z[:iend]))**2
     indx = (err <= errm).nonzero()[0]
     #if it is valid, refit:
     if len(z[indx]) > 2:
-        fit = nu.polyfit(z[indx],f[indx],1)
+        fit = nu.polyfit(z[:iend][indx],f[:iend][indx],1)
     #else we keep the minimum, without refit
+
     else:
         print("refit failed with index:", indx)
 
@@ -1288,12 +1294,15 @@ def find_slope(z,f, factor=3.0, Nfit= 5, verbose=False):
         #plt.plot(z,f,'r+')
         #plt.plot(z[:iend],nu.polyval(fit,z[:iend]),'g-')
         pl.plot(z,f,'r+')
-        pl.plot(z[:iend],nu.polyval(fit,z[:iend]),'g-')
+        pl.plot(z[:iend],nu.polyval(fit, z[:iend]),'g-')
         pl.draw()
 
         print("slope finding parameters")
-        print("start length: %d" %i)
-        print("i0: %d, i1: %d" %(min(indx),max(indx)))
+        print(f'Start with index: {i} fit: {fits[i]}, error: {errs[i]}')
+        if indx.size > 2:
+            print(f'fit index range: {min(indx)}, {max(indx)}')
+        else:
+            print('reevaluation came up empty')
         print("fit:", fit)
         print("in:", fits)
         print("belonging error:", errm)
