@@ -401,3 +401,17 @@ MIGRATION TO python 3:
 2023-03-01:
     Bugfix in the JPK reader. Sensor response may not be present, so define it only
     when we have it.
+
+2023-08-25:
+    The sloppy comparison of variable != [] for ndarrays does not work anymore, so I
+    change the checks to variable.size > 0. Also make sure that whenever I have ndarrays,
+    empty ones do not return [] --> lists, but nu.empty(0) an empty array.
+    And remove the only left over nu.float... (deprecated)
+
+2023-08-28:
+    the slope detector (find_slope) has some issues time to time, so try fixing the code
+    a bit. E.g. cleaning up the list comparisons, sorting, etc.
+
+2024-04-20:
+    Put the whole code under Creative Commons CC(4)-BY license, which allos free use,
+    modifications, etc. but requires attribution.

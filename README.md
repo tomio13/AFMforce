@@ -5,6 +5,9 @@ only from ASCII exported files.
 ## Aim
 load and analyze force-distance curves in a relatively easy way.
 
+# License
+As from 2024 April, this work is placed under the [Creative Commons CC-4-BY (attribution) license](https://creativecommons.org/licenses/by/4.0/).
+
 ## Main class: AFMforce
 An envelop to contain piezo actuator distance data and deflection data detected
 in the instrument. Internal calibration constants allow then to turn the sensor
@@ -83,3 +86,22 @@ a curve.
 
 FindMinima is to find local minima identifying break-away events
 in pull-back curves.
+
+# Cite this work
+You can cite this work with the Github page e.g.:
+Tamás Haraszti
+AFM force python package
+https://github.com/tomio13/AFMforce
+
+# Examples where this work was used
+
+Dimitris Missirlis, Tamás Haraszti, Lara Heckmann, Joachim P. Spatz
+"Substrate Resistance to Traction Forces Controls Fibroblast Polarization"
+Biophysical Journal, 119(12):2558 - 2572 (2020)
+DOI: 10.1016/j.biomaterials.2022.121646
+
+D. Rommel, M. Mork, S. Vedaraman, C. Bastard, L. P. B. Guerzoni, Y. Kittel, R. Vinokur, N. Born, T. Haraszti, L. De Laporte,
+"Functionalized Microgel Rods Interlinked into Soft Macroporous Structures for 3D Cell Culture"
+Adv. Sci. 2022, 9:2103554
+DOI:10.1002/advs.202103554
+

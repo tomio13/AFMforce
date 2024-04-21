@@ -105,11 +105,12 @@ if __name__ == '__main__':
             fig.canvas.draw_idle()
             #fig.canvas.draw()
             pl.ioff()
+            print("Spring constant %.6f" %a.force_constant)
+            print("Sensor response %.6f" %a.sensor_response)
 
             if N > 1:
                 txt = input("Press ENTER")
 
-            print("Spring constant %.6f" %a.force_constant)
         #end for
         pl.show()
         fig.close()
