@@ -1,0 +1,4 @@
+# AFM force curve analysis toolkit
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
