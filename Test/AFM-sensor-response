@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+""" run a super simlpe slope detection on an AFM force curve.
+    extracting the sensor response
+
+    Author:     T. Haraszti
+    Date:       2024-05-31
+    License:    CC(4)-BY
+    Warranty:   None
+"""
+
+from matplotlib import pyplot as pl
+from AFMforce import JPKforce, Brukerforce, Pavoneforce, find_slope
+import os
+import sys
+
+# helper funcitons
+def round(number: float, N:int = 0) -> float:
+    """ calculate a rounded version of number,
+        with N digits precision.
+        return the resulted float
+    """
+    prec = 10**N
+    return float(int(prec*number + 0.5))/prec
+# end round
+
+# device type decides to use: Brukderforce, JPKforce or Pavoneforce
+
+device_types = {
+                '-b': Brukerforce,
+                '-j': JPKforce,
+                '-p': Pavoneforce,
+                }
+
+device_type= device_types['-b']
+base_range= 0.3
+Nseg= -1
+Nfit= 5
+
+if __name__ == '__main__':
+    args = sys.argv[1:]
+    if len(args) > 0:
+        for k in device_types:
+            if k in args:
+                args.pop(args.index(k))
+                device_type= device_types[k]
+        # end testing for devices
+
+    filelist = []
+    N = len(args)
+    while (N > 0):
+        if args[0] == '-r':
+            if N < 2:
+                print('range number (0-1) is missing!')
+                sys.exit(1)
+            base_range = float(args[1])
+            args.pop(0)
+            args.pop(0)
+        elif args[0] == '-s':
+            if N < 2:
+                print('segment number (>0) is missing!')
+                sys.exit(1)
+            Nseg = int(args[1])
+            args.pop(0)
+            args.pop(0)
+        elif args[0] == '-f':
+            if N < 2:
+                print('fit segment number (>0) is missing!')
+                sys.exit(1)
+            Nfit = int(args[1])
+            args.pop(0)
+            args.pop(0)
+        else:
+            filelist.append(args.pop(0))
+
+        N = len(args)
+    # looping through arguments
+# we are in batch mode
+
+for fn in filelist:
+    if os.path.isfile(fn):
+        try:
+            a = device_type(fn)
+        except IOerror:
+            continue
+
+    a.segment= a.segments[Nseg]
+    print(f'using segment: {a.segment}')
+
+    b = a.baseline(base_range, order=1)
+
+    fnout = f'{os.path.splitext(fn)[0]}-plot.png'
+    sl = find_slope(a.Z, a.deflection_raw, Nfit= Nfit, verbose=True)
+    pl.savefig(fnout, dpi=200, bbox_inches='tight', pad_inches=0)
+    print(f'{fn} slope is: {round(sl, 5)} V/{a.Z_unit}, sensitivity: {round(1/sl, 3)} {a.Z_unit}/V')
