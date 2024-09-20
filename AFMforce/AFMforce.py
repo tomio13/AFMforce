@@ -672,7 +672,8 @@ def SavGol(y, Nkernel, order=4, difforder=0, KernelOnly=False):
     #M = mat( [[k**i for i in range(order)] for k in range(-Nk2, Nk2+1)])
     #let us use a bit more of the numpy:
     #this is faster for large numbers, but with a small margin only
-    M = nu.mat( [nu.arange(-Nk2,Nk2+1)**i for i in range(order+1)]).T
+    # M = nu.mat( [nu.arange(-Nk2,Nk2+1)**i for i in range(order+1)]).T
+    M = nu.asmatrix( [nu.arange(-Nk2,Nk2+1)**i for i in range(order+1)]).T
     #solve, and get the line of the order of derivative:
     Mi = nu.linalg.pinv(M).A[difforder]
     #up to this point it matches the results of R

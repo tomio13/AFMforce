@@ -415,3 +415,7 @@ MIGRATION TO python 3:
 2024-04-20:
     Put the whole code under Creative Commons CC(4)-BY license, which allos free use,
     modifications, etc. but requires attribution.
+
+2024-09-20:
+    The Pavone has mixed up saving the retraction and contact segments, though they were
+    registered correctly. I have added a force range test to try fixing it.

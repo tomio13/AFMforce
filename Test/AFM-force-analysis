@@ -125,7 +125,7 @@ for fn in lst:
     fnn = os.path.split(fn)[-1]
 
     if a.dataset == {}:
-        rep.write('\mUnable to load data', fnn, color='red')
+        rep.write('\nUnable to load data', fnn, color='red')
         continue
     else:
         rep.write('\nLoaded', fnn, color='cyan')
@@ -260,7 +260,7 @@ for fn in lst:
 
     pl.clf()
     pl.plot(Za, Fa, '-', alpha= 0.5)
-    pl.xlabel('distance, $\mu$m')
+    pl.xlabel('distance, $\\mu$m')
     pl.ylabel('force, nN')
     pl.plot(Zr, Fr, '-', alpha= 0.5)
 
@@ -290,7 +290,8 @@ for fn in lst:
     # at maximal force
     # if there is a jump to contact, this interpretation is gone...
     # integral force vs. length is 1E-15J we convert to 1E-18J = aJ
-    ContactArea1 = nu.trapz(Fas[:intindx], Zas[:intindx])*1000
+    # trapezoid takes y, x, dx, axis)
+    ContactArea1 = nu.trapezoid(Fas[:intindx], Zas[:intindx])*1000
     # copy the slice, or it gets overwritten later!
     yplotarea = Frs[:intindx].copy()
     yplotarea[ yplotarea < 0] = 0
@@ -313,7 +314,7 @@ for fn in lst:
 
     # this is the work the surface does until we get to F = 0
     # during retraction:
-    ContactArea2 = nu.trapz(Frs[:intindx], Zrs[:intindx])*1000
+    ContactArea2 = nu.trapezoid(Frs[:intindx], Zrs[:intindx])*1000
     rep.write('Area to contact in approach:', ContactArea1, 'aJ')
     rep.write('Remaining adhesion energy in retraction:', ContactArea2, 'aJ')
     rep.write('Estimated dissipation', ContactArea1 - ContactArea2, 'aJ')
@@ -343,7 +344,7 @@ for fn in lst:
         # the work under F=0, we do on the surface until we can
         # break away
         # again, the adhesion work is in 1E-15 J -> 1E-18 J = aJ
-        adhArea = nu.trapz(Frs[intindx:ijump], Zrs[intindx:ijump])*1000
+        adhArea = nu.trapezoid(Frs[intindx:ijump], Zrs[intindx:ijump])*1000
         adhDist = Zrs[ijump]
 
         rep.write('Adhesion energy:', adhArea, 'aJ', color='cyan')
@@ -392,7 +393,7 @@ for fn in lst:
     # we use the retraction contact point for indentation 0,
     # it should be closer to the real than the approach one
     #
-    # all indentation models provide a = sqrt(R\delta), a^3 = f(F)
+    # all indentation models provide a = sqrt(R\\delta), a^3 = f(F)
     # the contact area is indentation depth * bead radius
     fout = '%s-indentation-data.txt' %fnn
     SaveData(['force (nN)', 'indentation (micron)', 'contact area (micron^2)'],
@@ -459,7 +460,7 @@ for fn in lst:
                     )
     # plot the linearized representation of the Hertz model
     pl.plot(Fa[indx], (-Za[indx]*config['Radius'])**1.5)
-    pl.ylabel('$(R\delta)^{1.5}$, $\mu m^3$')
+    pl.ylabel('$(R\\delta)^{1.5}$, $\\mu m^3$')
     pl.xlabel('force, nN')
 
     pl.plot(fit_H['fitted'], (fit_H['x']*config['Radius'])**1.5, '-',
@@ -477,7 +478,7 @@ for fn in lst:
     print(indx)
     pl.plot(-Za[indx], Fa[indx], '+')
     pl.plot(fit_H['x'], fit_H['fitted'], '-', linewidth= 2)
-    pl.xlabel('indentation, $\mu$m')
+    pl.xlabel('indentation, $\\mu$m')
     pl.ylabel('force, nN')
     pl.savefig(os.path.join(outdir, '%s-indentation-Hertz_fit%s' %(fnn, ext)),
                 dpi= dpi,
@@ -509,7 +510,7 @@ for fn in lst:
     # to plot a linearized curve:
     pl.yscale('log')
 
-    #pl.xlabel('$\delta$, $\mu$m')
+    #pl.xlabel('$\\delta$, $\mu$m')
     #pl.ylabel('force, nN')
     pl.savefig(os.path.join(outdir, '%s-exponential-fit%s' %(fnn, ext)),
                 dpi= dpi,
@@ -579,7 +580,7 @@ for fn in lst:
         pl.clf()
         pl.plot(fitJKR['F'], fitJKR['delta'], '+-')
         pl.xlabel('force, nN')
-        pl.ylabel('$\delta$, $\mu$m')
+        pl.ylabel('$\\delta$, $\\mu$m')
         pl.plot(fitJKR['Fint'], fitJKR['dint'], 'r-', linewidth= 2)
         pl.savefig(os.path.join(outdir, '%s-JKR-fit%s' %(fnn, ext)),
                 dpi= dpi,

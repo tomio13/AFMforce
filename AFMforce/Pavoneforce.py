@@ -23,6 +23,7 @@ class Pavoneforce(AFMforce):
         raw_data = pavone_importer(filename)
         if raw_data == {}:
             return
+        # self.raw_data = raw_data
 
         #convert stuff...
         self.dataset['segments']=[]
@@ -201,12 +202,15 @@ def pavone_importer(filename, dN= 200):
         txtlst = fp.readlines()
     # end pulling up the file
 
-    l, res = list_to_header(txtlst, stoptext=['Time', 'Load'])
+    linenumber, res = list_to_header(txtlst, stoptext=['Time', 'Load'])
 
     # the last line is with the stop strings, this is the
     # line of the data header:
-    dataheader = txtlst[l].split('\t')
+    dataheader = txtlst[linenumber].split('\t')
+    print('data header:', dataheader)
 
+    # interpret the table part
+    # take apart the header
     tableunits = {}
     for i, val in enumerate(dataheader):
         if ' (' in val:
@@ -218,7 +222,8 @@ def pavone_importer(filename, dN= 200):
         dataheader[i] = head
         tableunits[head] = unit[:-1]
 
-    table = [fromstring(i, sep='\t') for i in txtlst[l+1:]]
+    # pull the values
+    table = [fromstring(i, sep='\t') for i in txtlst[linenumber+1:]]
     table = asarray(table)
     res['data'] = {}
     for i, val in enumerate(dataheader):
@@ -271,6 +276,7 @@ def pavone_importer(filename, dN= 200):
 
     segmentnames = ['approach', 'contact', 'retract']
     i0 = 0
+    dZ = []
     # print(indx)
     for i, i1 in enumerate(indx):
         # print('setting', i, segmentnames[i])
@@ -282,9 +288,23 @@ def pavone_importer(filename, dN= 200):
             res['segments'][name][head]['data'] = res['data'][head][i0:i1]
             res['segments'][name][head]['unit'] = tableunits[head]
 
+        dZ.append(abs(res['data']['Cantilever'][i1-1] - res['data']['Cantilever'][i0]))
+
         # update the start index...
         i0= i1 + 1 if i1 < table.shape[0] else table.shape[0]
     # done adding segments
+    print('segment force ranges:', dZ)
+
+    # occasionally the contact part is stored as last, instead of middle
+    # int this case try swapping them
+    if len(dZ) > 2 and dZ[2] < dZ[1]/10.0 :
+        print('swapping segments')
+        #tmp = res['segments']['contact'].copy()
+        #res['segments']['contact'] = res['segments']['retract'].copy()
+        #res['segments']['retract'] = tmp
+        tmp = res['segments']['contact']
+        res['segments']['contact'] = res['segments']['retract']
+        res['segments']['retract'] = tmp
 
     return res
 # end of the importer
