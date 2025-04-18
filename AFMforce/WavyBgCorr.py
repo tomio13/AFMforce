@@ -96,7 +96,7 @@ def fit_wave_background(distance, force,
         pl.plot(distance, force, alpha= 0.5)
         pl.plot(distance,
              fitted_force,
-             fmt='r-',
+             'r-',
              linewidth= 2)
         pl.xlabel('Z position')
         pl.ylabel('vertical deflection')
