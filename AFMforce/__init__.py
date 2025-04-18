@@ -10,6 +10,7 @@ from AFMforce.FittingExp import f_exp, fit_exp
 from AFMforce.FittingJKR import f_JKR, fit_JKR
 from AFMforce.FittingHertz_Exp import f_H_exp, fit_H_exp
 from AFMforce.LM import lm
+from AFMforce.WavyBgCorr import (bg_wave, fit_wave_background)
 
 __all__=["AFMforce", "JPKforce", "Brukerforce", "Pavoneforce",
         "Smooth", "SavGol",
