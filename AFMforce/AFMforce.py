@@ -5,8 +5,9 @@
 import os
 from zipfile import ZipFile
 import numpy as nu
-from numpy.fft import fft, ifft
 from matplotlib import pyplot as pl
+from AFMforce.WavyBgCorr import bg_wave, fit_wave_background
+from AFMforce.Smooth import SavGol, Smooth
 #from FittingHertz import f_Hertz_cone, f_Hertz_ball, fit_Hertz
 #from FittingPull import f_WLC, fit_WLC
 
@@ -550,14 +551,21 @@ class AFMforce(object):
         self.Zmax = zmax
     #end invert
 
-    def baseline(self, end=0.05, range= -1.0, order= 0, verbose=False,\
-            endN = -1):
+    def baseline(self,
+                 end=0.05,
+                 Zrange= -1.0,
+                 order= 0,
+                 endN = -1,
+                 wave = False,
+                 Nsmooth= 30,
+                 verbose=False
+                 ):
         """ Calculate a baseline using the Baseline() generic
             function.
             Parameters:
             end         what relative length of the curve should be
                         used at the end
-            range       the same in length, use the same units as Z
+            Zrange      the same in length, use the same units as Z
                         this redefines endN if > 0.0
 
             order       the order of polynomial to use. 0 stands for
@@ -565,6 +573,9 @@ class AFMforce(object):
             endN        an alternative to end, specify the number of
                         points instead of portion
                         This takes over if > 2
+            wave        Boolean, if True, use a wave background not a
+                        polynomial one. If set, order is not used.
+            Nsmooth     number of points in the smoothing filter of wave bg.
             verbose:    give feedback
 
             We apply Baseline to the Zmax limited extension, then
@@ -580,27 +591,45 @@ class AFMforce(object):
         #here the Zmax takes effect in self.Z...
         Z = self.Z
 
-        if range > 0.0 and endN < 2:
+        if Zrange > 0.0 and endN < 2:
             z = self.Z #thus Zmax and Z0 are applied
 
-            if z.min() > z.max() - range:
+            if z.min() > z.max() - Zrange:
                 raise ValueError("Too broad range, curve is only %.2f long"\
                             %(z.max() - z.min()))
             #end if too large
             #convert zmax to an index:
-            endN = int( (z > (z.max() - range)).sum() )
+            endN = int((z > (z.max() - Zrange)).sum())
             print("New endN is %d" %endN)
         #end if end is invalid
 
-        #call the generic baseline correction:
-        base = Baseline(self.Z, self.deflection_raw, order= order, \
-                end=end, verbose=verbose, endN = endN)
+        if wave:
+            N = len(self.Z)
+            i1 = N - endN if endN > 2 else int(N*(1.0 - end))
+            base = fit_wave_background(self.Z[i1:], self.deflection_raw[i1:], Nsmooth)
+
+        else:
+            #call the generic baseline correction:
+            base = Baseline(self.Z, self.deflection_raw, order= order, \
+                    end=end, verbose=verbose, endN = endN)
 
         #turn off the filter:
         ZM = self.Zmax
         self.Zmax = -1
-        self.deflection_raw = self.deflection_raw - \
-                                                nu.polyval( base['fit'], self.Z)
+        if wave:
+            bg= bg_wave(self.Z,
+                        base['amplitude'],
+                        base['amplitude_slope'],
+                        base['omega'],
+                        base['beta'],
+                        base['delta'],
+                        base['offset'],
+                        base['slope']
+                        )
+        else:
+            bg = nu.polyval(base['fit'], self.Z)
+
+        self.deflection_raw = self.deflection_raw - bg
         sens = self.sensor_response
         if sens > 0:
             self.sensor_response = sens #recalculate deflection
@@ -627,180 +656,6 @@ class AFMforce(object):
 ###############################################################################
 ########## General functions for conversion and analysis
 ###############################################################################
-
-######## Smoothening:
-def SavGol(y, Nkernel, order=4, difforder=0, KernelOnly=False):
-    """ Implement a Savitsky-Golay smoothing of a 1D data vector.
-        Based on the savgol filter in R by Hans W. Borchers (2003),
-        and the example in the nympy cookbook by Ryan Hope
-        (https://gist.github.com/RyanHope/2321077).
-        Due to issues with the padding / shifting in nu.convolve,
-        implement 1D FFT based convolution.
-
-        Further references:
-            A. Savitzky, M. J. E. Golay, Smoothing and Differentiation of
-            Data by Simplified Least Squares Procedures. Analytical
-            Chemistry, 1964, 36 (8), pp 1627-1639.
-
-            Numerical Recipes in C++
-            3rd Edition
-            Press, William H.; Teukolsky, Saul A.;
-            Vetterling, William T.; Flannery Brian P.
-
-            Cambridge University Press ISBN-13: 9780521880688
-
-        Parameters:
-        y           dataset
-        Nkernel     width of the kernel
-        order       order of smoothing
-        difforder   the order of differential to be returned
-    """
-    N = len(y)
-    Nkernel = int(Nkernel)
-    if Nkernel < 1:
-        raise ValueError("Too small kernel window!")
-
-    if order < 1:
-        raise \
-        ValueError("Too small order, the fit should be at least linear (1)")
-    #we go half the kernel +/- the midpoint
-    #integer will truncate it:
-    Nk2 = int(Nkernel/2)
-    #we need an outer product using the power of the original data
-    #0 to order including both ends!
-    #the numpy.outer can not do this, though it were faster
-    #M = mat( [[k**i for i in range(order)] for k in range(-Nk2, Nk2+1)])
-    #let us use a bit more of the numpy:
-    #this is faster for large numbers, but with a small margin only
-    # M = nu.mat( [nu.arange(-Nk2,Nk2+1)**i for i in range(order+1)]).T
-    M = nu.asmatrix( [nu.arange(-Nk2,Nk2+1)**i for i in range(order+1)]).T
-    #solve, and get the line of the order of derivative:
-    Mi = nu.linalg.pinv(M).A[difforder]
-    #up to this point it matches the results of R
-    if KernelOnly:
-        return Mi
-
-    #do the convolution using fft:
-    lg2 = nu.log(2)
-    #round length up to the next power of two
-    Nlog2 = 2**int(nu.log(N+Nkernel)/lg2+1)
-    Ndiff = int((Nlog2 - N)/2)
-    #y = nu.concatenate( (y, nu.zeros(Nlog2 - N)+ y[-1]) )
-    #use symmetric padding to remove edge jumps:
-    y = nu.concatenate( (nu.zeros(Ndiff) + y[0], y,\
-                         nu.zeros(Nlog2 - N - Ndiff)+ y[-1]) )
-
-    res = ifft( fft(y, Nlog2)*fft(Mi[::-1], Nlog2))
-
-    Nstart = Ndiff + Nk2
-    #to make sure the shift is a match!
-    #return (-1)**difforder*res[Nk2:N+Nk2].real
-    return (-1)**difforder*res[Nstart:N+Nstart].real
-#end of SavGol()
-
-def Smooth(f, radius=10, par=2, type="SavGol", deriv= 0):
-    """ Smoothen the data using a convolution filter of
-        a Gauss kernel or a Savitsky-Golay kernel
-        Make sure you chose parameters such that the kernel vanishes
-        at the edges, or it will shift your curve.
-        The curve is padded by its end values to compensate its shift,
-        but doing the same with the kernel would kill e.g. a boxcar
-        smoothing.
-
-        Parameters:
-        radius      radius of the filter. The whole is 2r+1 wide
-        par         is sigma for the Gaussian kernel
-                    or the order of the fit for the Sav. Gol. filter
-                    (2 is a good one for the latter)
-        type        what kernel to use.
-                    It can be a Gaussian, a boxcar for a flat kernel,
-                    or SavGol for the Savitsky-Golay filter (default)
-                    or one of the window functions defined in numpy:
-                    Bartlett, Hanning, Kaiser or Blackman
-        deriv       Optional parameter, calculate the first derivative
-                    if it is nonzreo, for the case of Gaussian or
-                    Savitzky - Golay filters
-                    Note: The Gaussian gives the negative of a real derivative
-                    when used on a signal.
-
-        Return:
-        the smoothened vector with the same length as f
-        Do not forget, that the first and last r points are
-        affected by the finite sample length!
-    """
-    if radius < 2:
-        raise ValueError("Window should be wider as 1 point!")
-    if deriv != 0:
-        deriv = 1
-
-    Nk = int( 2*radius + 1)
-    kx = nu.arange(Nk, dtype="f") -radius
-    type = type.lower()
-
-    if "gauss" in type:
-        if par < 0:
-            print("width < 0: using absolute value")
-            par = -1.0 * par
-
-        width2 = -2.0*par*par
-        #This part is the same:
-        k = 1.0/(nu.sqrt(2.0*nu.pi)*par) * nu.exp((kx*kx)/width2)
-        if deriv != 0:
-            # derivative of the Gaussian kernel is:
-            # k = -k*kx/par**2
-            # this will cause a negative derivative, the leading part
-            # has the positive weight!
-            k = k*kx/par**2
-        #if it is too narrow, we may have to renormalize it to avoid
-        # shifting the data due to offset:
-        if radius < 4*par:
-            k = k - k.min()
-            k = k / k.sum()
-
-    elif "flat" in type or "boxcar" in type:
-        k = k / float(k.sum())
-
-    elif "SavGol" in type or "savgol" in type:
-        k = SavGol(f, Nk, par, deriv, KernelOnly=True)
-
-    else:
-        try:
-            txt = "nu.%s(%d)" %(type, Nk)
-            k= eval(txt)
-            k = k/k.sum()
-        except:
-            print("Invalid kernel type!")
-            return f
-    #do the convolution using fft:
-    N = len(f)
-    Nk2 = int(radius)
-    lg2 = nu.log(2)
-    #round length up to the next power of two
-    #to make sure the shift is a match!
-    #we want convolution, so pad the data with zeros, actually
-    #lift this to the last point...
-    Nlog2 = 2**int(nu.log(N+Nk)/lg2+1)
-    Ndiff = int((Nlog2 - N)/2)
-    #ff= nu.concatenate( (f, nu.zeros(Nlog2 - N)+ f[-1]) )
-    #use symmetric padding to compensate edge jumps
-    y = nu.concatenate( (nu.zeros(Ndiff) + f[0], f,\
-                         nu.zeros(Nlog2 - N - Ndiff)+ f[-1]) )
-
-    #res = ifft( fft(f, Nlog2)*fft(k[::-1], Nlog2))
-    #Subtracting the mean of the signal should improve precision
-    # and help removing offsets
-    ymean = y.mean()
-    res = ifft( fft(y-y.mean(), Nlog2)*fft(k[::-1], Nlog2))
-    if deriv == 0:
-        #we add the offset back for smoothing:
-        res = res + ymean
-    #end if offset was done
-
-    #mode "valid": only where the signals overlap
-    Nstart = Ndiff + Nk2
-    return res[Nstart:N+Nstart].real
-#end of Smooth
-
 
 
 def Baseline(z,I, end=0.05, order=0, verbose=False, endN=-1):
@@ -866,10 +721,14 @@ def Baseline(z,I, end=0.05, order=0, verbose=False, endN=-1):
         if verbose:
             print("swapped order!")
 
-    if Nend < I.size:
-        I0 = I[-Nend:].mean()
-        ff = I - I0
-    else:
+    # this part was ineffective.... (not used)
+    #
+    #if Nend < I.size:
+    #    I0 = I[-Nend:].mean()
+    #    ff = I - I0
+    #else:
+    # and this should not happen
+    if I.size >= Nend:
         print("Invalid number of end part! %d" %Nend)
         return {}
     #end if

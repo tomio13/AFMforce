@@ -2,7 +2,7 @@
 """ fit a sine wave background to AFM data and try guessing the parameters
 """
 
-from AFMforce.AFMforce import Smooth
+from AFMforce.Smooth import Smooth
 from matplotlib import pyplot as pl
 from numpy import sin, pi, diff, polyfit, polyval, abs
 from scipy.optimize import leastsq
@@ -22,7 +22,7 @@ def bg_wave(x,
     y = (amplitude + amplitude_slope*x)* sin((omega + beta*x) * x + delta) + offset + slope*x
 
     return(y)
-# end bg_wave_fit
+# end bg_wave
 
 
 def err_bg_wave_fit(params, *args):
