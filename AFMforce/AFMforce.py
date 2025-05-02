@@ -607,7 +607,10 @@ class AFMforce(object):
             N = len(self.Z)
             i1 = N - endN if endN > 2 else int(N*(1.0 - end))
             # print('wave background')
-            base = fit_wave_background(self.Z[i1:], self.deflection_raw[i1:], Nsmooth)
+            base = fit_wave_background(self.Z[i1:],
+                                       self.deflection_raw[i1:],
+                                       Nsmooth,
+                                       verbose= verbose)
 
         else:
             # call the generic baseline correction:
