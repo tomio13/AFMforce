@@ -4,7 +4,7 @@
 
 import os
 from zipfile import ZipFile
-from numpy import linspace, zeros, frombuffer, asarray
+from numpy import linspace, zeros, frombuffer, asarray, arange
 from AFMforce import AFMforce
 
 ###############################################################################
@@ -34,6 +34,13 @@ class JPKforce(AFMforce):
                 self.dataset["position"]= {}
                 self.dataset['position']["data"] = asarray( [a['x'],a['y']] )
                 self.dataset['position']['unit'] = "m"
+
+        if 'force constant' in cal_data:
+            self.dataset['force constant'] = cal_data['force constant']
+            self.dataset['force constant unit'] = cal_data['force constant unit']
+        if 'Sensor response' in cal_data:
+            self.dataset['sensor response'] = cal_data['Sensor response']
+            self.dataset['sensor response unit'] = cal_data['Sensor response unit']
 
         for seg in self.dataset['segments']:
             self.dataset[seg] = {}
@@ -65,19 +72,19 @@ class JPKforce(AFMforce):
                         nc['deflection_unit'] = cs['Distance unit']
                         nc['data'] = cs['data']
                         nc['unit'] = cs['unit']
-                        if 'force constant' in cs:
-                            self.dataset['force constant'] = cs['force constant']
-                        if 'Sensor response' in cs:
-                            self.dataset['sensor response'] = cs['Sensor response']
+                       # if 'force constant' in cs:
+                       #     self.dataset['force constant'] = cs['force constant']
+                       # if 'Sensor response' in cs:
+                       #     self.dataset['sensor response'] = cs['Sensor response']
 
                     else:
                         #we do not have force:
                         nc['deflection'] = cs['data']
                         nc['deflection_unit'] = cs['unit']
-                        if 'force constant' in cs:
-                            self.dataset['force constant'] = cs['force constant']
-                        if 'Sensor response' in cs:
-                            seft.dataset['sensor response'] = cs['Sensor response']
+                        # if 'force constant' in cs:
+                        #     self.dataset['force constant'] = cs['force constant']
+                        # if 'Sensor response' in cs:
+                        #     self.dataset['sensor response'] = cs['Sensor response']
                 else:
                     #nothing is defined but raw data:
                     nc['raw_data'] = cs['data']
@@ -123,6 +130,9 @@ class JPKforce(AFMforce):
         self.filename = filename
         if 'date' in raw_data:
             self.date = raw_data['date']
+
+        # for debugging only:
+        # self.raw_data= raw_data
     #end read_data
 
 #end JPKforce
@@ -135,8 +145,10 @@ def header_to_dict(txt):
     """ Convert the header text structures to a dict structure
         txt: the text content
         """
-    #why do I get here a bytes object, I can not tell... but clean the things then:
-    if type(txt).__name__ == 'bytes':
+    # why do I get here a bytes object, I can not tell... but clean the things then:
+    # if type(txt).__name__ == 'bytes':
+    # print('type of txt:', type(txt).__name__)
+    if isinstance(txt, bytes):
         txt = txt.decode('utf8')
 
     if '\n' in txt:
@@ -153,7 +165,8 @@ def header_to_dict(txt):
         if t[0:2] == '###':
             #remark line
             if 'comment' in res:
-                if type(res['comment']).__name__ == 'list':
+                if isinstance(res['comment'], list):
+                    # if type(res['comment']).__name__ == 'list':
                     res['comment'].append(t)
                 else:
                     res['comment'] = [res['comment'],t]
@@ -163,12 +176,12 @@ def header_to_dict(txt):
         elif t[0] == '#':
             res['date'] = t[1:]
 
-        #these description fileas are key = value pairs if not comments
+        #these description files are key = value pairs if not comments
         elif '=' in t:
             key, tval = t.split('=',1)
             keylist = key.split('.')
             #clean off accidental spaces (should not be any)
-            tval=tval.strip()
+            tval= tval.strip()
 
             try:
                 #tval.isdigit does not help for engineering format
@@ -192,9 +205,11 @@ def header_to_dict(txt):
             for k in keylist[:-1]:
                 if not k in c:
                     c[k] = {}
+                # we step to the next level
                 c = c[k]
             #end for
             c[keylist[-1]] = val
+            # print(keylist, val)
 
         else:
             print("Invalid line: %s" %t)
@@ -250,18 +265,18 @@ def ReadForceData(filename):
         for i in filenamelist:
             print("%s" %i)
         return {}
-    #end if header exists
+    # end if header exists
 
-    #header.properties is a text file describing the general
-    #header, and available in the root of the file
-    #the file is a zipped folder containing:
-    # header.properties
-    # segments/
-    #the main result is a dict, starting with this header:
+    # header.properties is a text file describing the general
+    # header, and available in the root of the file
+    # the file is a zipped folder containing:
+    #   header.properties
+    #   segments/
+    # the main result is a dict, starting with this header:
     res = header_to_dict(fp.read("header.properties"))
-    #so far this was general, but the details are different from now:
-    #newer (ver 2.0) versions have a shared header as well:
-    #tmp = filter(lambda x: "shared-data" in x, filenamelist)
+    # so far this was general, but the details are different from now:
+    # newer (ver 2.0) versions have a shared header as well
+    # in the shared-data/header.properties file
     tmp = [x for x in filenamelist if "shared-data" in x]
 
     if tmp != []:
@@ -300,45 +315,58 @@ def ReadForceData(filename):
             continue
 
         for j in chlist:
-            #we need a data type:
-            #if it is new, we have lcd-info to deal with:
+            # print('opening channel:', j)
+            # print(actual_channels[j])
+            # we need a data type:
+            # if it is new, we have lcd-info to deal with:
             if res['file-format-version'] >= 2.0:
-                #new type, we have the channel info in the shared, 1x
-                #for all segments. For this we need to find out the "lcd":
-                lcd = '%d' %(int(actual_channels[j]['lcd-info']['*']))
+                # new type, we have the channel info in the shared, 1x
+                # for all segments. For this we need to find out the "lcd":
+                # lcd = '%d' %(int(actual_channels[j]['lcd-info']['*']))
+                lcd = str(int(actual_channels[j]['lcd-info']['*']))
                 ftype = res['shared-header']['lcd-info'][lcd]['type']
             else:
                 #old way:
                 ftype = actual_channels[j]['data']['type']
-            #end if version
-            #where is the file: reconstruct the file name
-            datafile = "segments/%d/%s" %(i, \
+            # end if version
+            # where is the file: reconstruct the file name
+            if 'file' in actual_channels[j]['data']:
+                datafile = "segments/%d/%s" %(i, \
                                 actual_channels[j]['data']['file']['name'])
 
-            #now, what we do depends on the ftype in the headers:
-            if ftype == "float-data":
-                datakey = ">f4"
-            elif ftype == "integer-data":
-                #datakey = ">i32" changed in numpy 1.10
-                datakey = ">i4"
-            elif ftype == "short":
-                datakey = ">h"
-            else:
-                #not probable, but who knows?!
-                raise ValueError("Unknown data type: %s" %ftype)
-            #end if ftype
+                #now, what we do depends on the ftype in the headers:
+                if ftype == "float-data":
+                    datakey = ">f4"
+                elif ftype == "integer-data":
+                    #datakey = ">i32" changed in numpy 1.10
+                    datakey = ">i4"
+                elif ftype == "short":
+                    datakey = ">h"
+                else:
+                    #not probable, but who knows?!
+                    raise ValueError("Unknown data type: %s" %ftype)
+                #end if ftype
 
-            #get the file:
-            buff = fp.read(datafile)
-            # data = fromstring(buff, dtype=datakey)
-            data = frombuffer(buff, dtype=datakey)
-            channels[j] = data
+                #get the file:
+                buff = fp.read(datafile)
+                # data = fromstring(buff, dtype=datakey)
+                data = frombuffer(buff, dtype=datakey)
+                channels[j] = data
+            elif ('start' in actual_channels[j]['data'] and
+                  'step' in actual_channels[j]['data'] and
+                  'num-points' in actual_channels[j]['data']):
+                data = actual_channels[j]['data']['start'] + \
+                       arange(actual_channels[j]['data']['num-points']) * \
+                       actual_channels[j]['data']['step']
+                channels[j] = data
+
         #end for chlist
         res['segments'][i] = channels
     #end for segment_headers
 
     return res
 #end of ReadForceData
+
 
 def CalibrateData(jpkforcedata):
     """
@@ -365,7 +393,7 @@ def CalibrateData(jpkforcedata):
             'Force constant':       spring constant if available
             'Force constant unit':  the unit of the spring constant
             'Distance unit':        for deflections
-            'Distance':             the distance data after sensor/distance 
+            'Distance':             the distance data after sensor/distance
                                     conversion
     """
 
@@ -379,18 +407,22 @@ def CalibrateData(jpkforcedata):
     res = {}
 
     for seg in jpkforcedata['segments'].keys():
-        #print("processing segment: %s" %segment)
+        # print("processing segment: %s" %segment)
         segment_headers = jpkforcedata['segment-headers']
         segment = jpkforcedata['segments'][seg]
-        #the information structure for the segment/channels:
-        #for the newest system, it is still not enough, we need
-        #the shared headers as well
+        # the information structure for the segment/channels:
+        # for the newest system, it is still not enough, we need
+        # the shared headers as well
         actual_channels = segment_headers[seg]['channel']
         force_segment_header = segment_headers[seg]['force-segment-header']
 
+        # resulted segment, part of res above to be returned
         resseg = {}
 
-        #the keys of each segment are the channels:
+        # within a segment, we have channels, defleciton in
+        # voltage, distance and force
+
+        # the keys of each segment are the channels:
         for dsetkey in segment.keys():
             #print("processing segment: %s" %dsetkey)
             x = segment[dsetkey]
@@ -398,21 +430,24 @@ def CalibrateData(jpkforcedata):
             resseg[dsetkey] = {}
 
             if len(x) < 1:
-                print("Warning: Empty data set in %s" %dsetkey)
+                print("Warning: Empty data set in", dsetkey)
                 continue
             #end if
 
-            #we need to find the calibration info. This will be a subdict
-            #held in the convset variable.
-            #if it is new, we have lcd-info to deal with:
-            #old formats: 0.12, 0.5
-            #new format: 2.0 from Sept 2013 on
+            # we need to find the calibration info. This will be a subdict
+            # held in the convset variable.
+            # if it is new, we have lcd-info to deal with:
+            # old formats: 0.12, 0.5
+            # new format: 2.0 from Sept 2013 on
             if jpkforcedata['file-format-version'] >= 2.0:
-                #new type, we have the channel info in the shared, 1x
-                #for all segments. For this we need to find out the "lcd":
+                # new type, we have the channel info in the shared,one
+                # for each segment. For this we need to find out the "lcd":
+                # this is stored locally for the given channel...
+                # in the local header, lcd-info '*' key:
                 lcd = '%d' %(int(actual_channels[dsetkey]['lcd-info']['*']))
-                convset = jpkforcedata['shared-header']\
-                        ['lcd-info'][lcd]
+
+                # print(f'calibration search found lcd: {lcd}')
+                convset = jpkforcedata['shared-header']['lcd-info'][lcd]
                 encoderset = convset
             else:
                 #old way:
@@ -443,24 +478,30 @@ def CalibrateData(jpkforcedata):
             convset = convset['conversion-set']
 
             #calibrated? How?
+            # this contains text like: 'nominal calibdated'
             convkeys = convset['conversions']['list'].split()
 
 
             #default calibration is:
+            # It seems sometimes we have the force before the distance...
+            # let us try:
+            # convkeys.sort()
+            # commented out, to test whether it works without caring
+            # about the sequence of the data
+
             for calit in convkeys:
                 calib = convset['conversion'][calit]
 
-                #if defined is false, we can not do anything
+                # if defined is false, we can not do anything
                 if calib['defined'] == False:
-                    #print("%d %s %s conversion is not defined" \
-                    #%(seg, dsetkey, calit))
+                    print(f'{seg} {dsetkey} {calit} conversion not defined')
                     continue
                 #end if defined
 
-                #zoom down:
-                #this should be redundant check:
+                # dig in for details
+                # this should be redundant check:
                 if  'scaling' not in calib:
-                    print("no scaling defined")
+                    print("calib defined but scaling not set")
                     continue
                 #end if
                 sc = calib['scaling']
@@ -471,13 +512,12 @@ def CalibrateData(jpkforcedata):
                     unit = 'unknown'
                 #end unit
 
-                #we have some more description:
-                #calibration type: linear
-                #calibration offset and multiplier
+                # we have some more description:
+                # calibration type: linear
+                # calibration offset and multiplier
                 ctype = sc['type']
                 if ctype != "linear":
-                    raise ValueError("Unknown scaling: %s in %s of %s" \
-                                    %(ctype,calit, dsetkey))
+                    raise ValueError(f"Unknown scaling: {ctype} in {calit} of {dsetkey}")
                 #end if
 
                 #now get the offset and the multiplier
@@ -500,23 +540,32 @@ def CalibrateData(jpkforcedata):
                 #record the force constant:
                 #print("calit is", calit)
                 #print('keys', resseg[dsetkey].keys())
+                # we store distance data because that is the deflection
+                # we pick it up afterwards into the AFMforce structure
+                # (see around line 80 in this file)
                 if calit == 'distance':
+                    # sensor response is to convert voltage to
+                    # distance,thus the multiplier:
                     resseg[dsetkey]['Distance data']= x
                     resseg[dsetkey]['Distance unit'] = unit
-                    resseg[dsetkey]['Sensor response'] = a
-                    resseg[dsetkey]['Sensor response unit'] = "%s/V" %\
-                            unit
+                    res['Sensor response'] = a
+                    res['Sensor response unit'] = f"{unit}/V"
 
-                #if we have a calibration constant force, it may be
-                #invalid. If the cantilever is not calibrated, we have
-                #only a raw Voltage as output
-                #Such still needs conversion, but there is no force constant!
-                elif calit == 'force' and 'Distance unit' in resseg[dsetkey]:
+                # if we have a calibration constant force, it may be
+                # invalid. If the cantilever is not calibrated, we have
+                # only a raw Voltage as output
+                # Such still needs conversion, but there is no force constant!
+                # ideally then there is no 'force' in the key list
+                # Originally I assumed that the distance needs to be defined first,
+                # but it is not necessary
+                # elif calit == 'force' and 'Distance unit' in resseg[dsetkey]:
+                elif calit == 'force':
                     #print('a:', a, 'b:',b)
                     #print('keys', resseg[dsetkey].keys())
-                    resseg[dsetkey]['force constant'] = a
-                    resseg[dsetkey]['force constant unit'] = "%s/%s" %\
-                            (unit, resseg[dsetkey]['Distance unit'])
+                    res['force constant'] = a
+                    res['force constant unit'] = unit
+                            # resseg[dsetkey]['force constant unit'] = "%s/%s" %\
+                            # (unit, resseg[dsetkey]['Distance unit'])
                 #end if distance or force
 
             #end for calibration
@@ -539,6 +588,38 @@ def CalibrateData(jpkforcedata):
         else:
             name = 'unknown'
         #end if
+
+        # this information should be segment independent,
+        # but is in every segment header now...
+        if ('environment' in force_segment_header and
+            'cantilever-calibration-info' in force_segment_header['environment']):
+            force_cal = force_segment_header['environment']['cantilever-calibration-info']
+            # print(force_cal)
+            if 'sensitivity' in force_cal:
+                sensitivity_txt = force_cal['sensitivity']
+                sensitivity, sens_unit = sensitivity_txt.split(' ',1)
+                sensitivity = float(sensitivity)
+                if sens_unit == 'nm/V':
+                    # turn to metric:
+                    sensitivity = sensitivity * 1E-9
+                    sens_unit = 'm/V'
+
+                res['Sensor response'] = sensitivity
+                res['Sensor response unit'] = sens_unit
+            if 'spring-constant' in force_cal:
+                txt = force_cal['spring-constant']
+                k, k_unit = txt.split(' ',1)
+                k = float(k)
+                # a slight correction
+                if k_unit == 'mN/m':
+                    k = k/1000.0
+                    k_unit = 'N/m'
+
+                res['force constant'] = k
+                res['force constant unit'] = k_unit
+            # print(resseg[dsetkey])
+        # end if environment and calibration are available
+
         if 'extend' in name:
             name = "approach"
         elif 'retract' in name:
@@ -547,8 +628,10 @@ def CalibrateData(jpkforcedata):
 
         resseg['name'] = name
         res[seg] = resseg
-    #end for segments
-    res['segments'] = [x for x in res.keys()]
+    # end for segments
+    # segments are integer numbers like 0, 1, 2, ...
+    # other keys are parameters, like Sensor response
+    res['segments'] = [x for x in res.keys() if isinstance(x, int)]
     return res
 #end CalibrateData
 

@@ -419,3 +419,29 @@ MIGRATION TO python 3:
 2024-09-20:
     The Pavone has mixed up saving the retraction and contact segments, though they were
     registered correctly. I have added a force range test to try fixing it.
+
+2025-05-02:
+    Quite a bit happened recently. There are two key topics.
+    1. an empyrical 7 parameter wave pattern fit is made to interference backgrounds
+    2. the JPKforce part got some cleaning and update, because our new JPK system showed some
+        quirks related to file format.
+
+    The wavy background caused by light interference is not the simplest because it has:
+    - periodicity that may shift linearly
+    - amplitude that may increase / decrease
+    - a tilt in the background
+    So I made a triple 'linear' approximation of this problem adding amplitude slope,
+    chirp and linear background to the curve.
+    If the periodicity is quessed right enough it works. Otherwise it will settle to a
+    zero amplitude middle value.
+    This periodicity I guess from a smoothed data set and its crossing zeros.
+
+    JPK data
+    the company started storing the force/deflection/raw curves not in sequence but like
+    raw/force/deflection, which meant sensor response was not picked up in time to get the
+    force constant.
+    But at the same time both of these calibration data are in a generic segment header
+    copied in every segment.
+    So, I added a sort of keys in evaluating the process and I am looking for the header as well.
+    If I find it, it overwrites what I guessed from the slope values.
+

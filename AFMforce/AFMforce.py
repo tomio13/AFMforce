@@ -606,14 +606,20 @@ class AFMforce(object):
         if wave:
             N = len(self.Z)
             i1 = N - endN if endN > 2 else int(N*(1.0 - end))
+            # print('wave background')
             base = fit_wave_background(self.Z[i1:], self.deflection_raw[i1:], Nsmooth)
 
         else:
-            #call the generic baseline correction:
-            base = Baseline(self.Z, self.deflection_raw, order= order, \
-                    end=end, verbose=verbose, endN = endN)
+            # call the generic baseline correction:
+            # print('polynomial baseline')
+            base = Baseline(self.Z,
+                            self.deflection_raw,
+                            end=end,
+                            order= order,
+                            verbose=verbose,
+                            endN = endN)
 
-        #turn off the filter:
+        #turn off the filter and recalculate for the whole Z range:
         ZM = self.Zmax
         self.Zmax = -1
         if wave:
@@ -728,7 +734,7 @@ def Baseline(z,I, end=0.05, order=0, verbose=False, endN=-1):
     #    ff = I - I0
     #else:
     # and this should not happen
-    if I.size >= Nend:
+    if I.size <= Nend:
         print("Invalid number of end part! %d" %Nend)
         return {}
     #end if
@@ -759,7 +765,7 @@ def Baseline(z,I, end=0.05, order=0, verbose=False, endN=-1):
     #if the result is too close to the start, it may be completely off
     #fall back to the standard way:
     if i0 < 0.2*len(I):
-        print("suspicous low i0: %d" %i0)
+        print("suspicious low i0: %d" %i0)
         i0 = I.size - Nend
     #end i0
 
@@ -767,7 +773,8 @@ def Baseline(z,I, end=0.05, order=0, verbose=False, endN=-1):
         fit = nu.polyfit(z[i0:],I[i0:],int(order))
         fitted = nu.polyval(fit, z)
     else:
-        #fit shold be an array, even if it is 1 long
+        # we have a constant only request
+        # fit shold be an array, even if it is 1 long
         fit = nu.asarray([I[i0:].mean()])
         fitted = nu.zeros(I.size)+ fit[0]
     #end if order
@@ -789,8 +796,12 @@ def Baseline(z,I, end=0.05, order=0, verbose=False, endN=-1):
         print("first point: %d, %.3f" %(i0, z[i0]))
         print("number of points: %d" %I.size)
 
-    return({'data':I-fitted, 'z':z, 'bkg':fitted, 'fit':fit,
-            'i0':i0, 'sigma': sigma})
+    return({'data':I-fitted,
+            'z':z,
+            'bkg':fitted,
+            'fit':fit,
+            'i0':i0,
+            'sigma': sigma})
 #end Baseline
 
 
