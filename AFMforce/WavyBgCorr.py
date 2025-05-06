@@ -29,7 +29,8 @@ def err_bg_wave_fit(params, *args):
     x = args[0]
     y = args[1]
     amplitude, amplitude_slope, omega, beta, delta, offset, slope = params
-    amplitude = abs(amplitude)
+    # amplitude = abs(amplitude)
+    amplitude = amplitude
 
     return (y - bg_wave(x, amplitude, amplitude_slope, omega, beta, delta, offset, slope))
 # end calculating error vector
