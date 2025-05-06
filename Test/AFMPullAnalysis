@@ -54,11 +54,11 @@ config = {'dir': './', 'outdir':'./Results',
 # if SaveSmoothed is set to anything, the smootehened data will be saved
 # if FitSmoothed' is defined, use Fs instead of F for the peak analysis
 # NoiseRange is a force value in nN for thresholding forces
-# EstimateSensorResponse to automatic finding sensor response
+# EstimateSensorResponse to automatic finding sensor response on the fly
 # KeepBaseline to search for peaks in the full force curve, otherwise the
 #               baseline tail is cut off
 
-# ReadConfig can take care of the missing file, but fills up config
+# ReadConf can take care of the missing file, but fills up config
 # with default values properly
 # if simplify is set, do not return lists, but their last elements only
 config = ReadConf(configfile, config, simplify= True)
@@ -112,7 +112,8 @@ print("Found %d force files" %len(lst))
 if not os.path.isdir(outdir):
     os.mkdir(outdir)
 
-#collect the results in a table formed by a list of lists
+# collect the results in a table formed by a list of lists
+# the header is something like:
 # resheader = ['filename', 'X, micron','Y, micron',\
 #             'Number_of_minima', 'Fmax', 'Fmax.analyzed',
 #             'Fmax.fitted',\
@@ -177,7 +178,8 @@ res = []
 resheader = []
 #loop through the file list and do the job:
 for fn in lst[:N]:
-    # collect the results in a list of dicts:
+    # collect the results in a list of lists
+    # generated from the values of this dict:
     resline = {}
 
     #extract path:
@@ -229,7 +231,7 @@ for fn in lst[:N]:
         else:
             a.Zmax = Zmax
 
-    #do we have data? This is temporary, we have not done adjustements
+    # do we have data?
     z = a.Z
     zunit = a.Z_unit
     if len(z) == 0 or z[0] == z[-1] or zunit=='':
@@ -237,7 +239,7 @@ for fn in lst[:N]:
         continue;
     #end if
 
-    #get the force data for testing only
+    # get the force data for testing only
     if len(a.force) == 0  or a.force.min() == a.force.max():
         rep.write('No force or invalid force data found!')
         continue
@@ -260,13 +262,15 @@ for fn in lst[:N]:
         rep.write("Estimated new sensor response as:", SensorResponse, "m/V",
                   color='green')
 
+    # writing back the sensor response and spring constant
+    # regenerates deflection and force data:
     if SensorResponse > 0.0:
         a.sensor_response = SensorResponse
     if SpringConstant > 0.0:
         a.force_constant = SpringConstant
     #end if
 
-    #convert any height to microns:
+    # convert any height to microns:
     if zunit == 'm':
         z = a.Z*1E6;
         D = a.distance * 1E6
@@ -293,19 +297,16 @@ for fn in lst[:N]:
     rep.write('Found height data:', a.Z_type, 'using', zunit, 'units')
     rep.write('We have a force range of', F.min(),':', F.max(),'using', Funit)
 
-    #here we can add later modifications to sensor response or the
-    #force constant...
-    #for now, let us use the recorded values!
     if a.force_constant < 0 or a.sensor_response < 0:
         rep.write('Not calibrated data! Skipping', color='red')
         continue
     #end if
 
-    #prepare for outputs
+    # prepare for outputs
     fout = f'{fn0}-Pull-peaks'
 
-    #the full command would be:
-    #Ds = Smooth(D, radius = SmoothRadius, par=2, type="SavGol")
+    # the full command would be:
+    # Ds = Smooth(D, radius = SmoothRadius, par=2, type="SavGol")
     Ds = Smooth(D, SmoothRadius)
     Fs = Smooth(F, SmoothRadius)
 
@@ -314,9 +315,10 @@ for fn in lst[:N]:
                     zip(Ds, Fs),\
                     os.path.join( outdir, f'{fn0}-smoothed-curve.txt'),
                 'Smoothened AFM curve', rep)
-    #end save smoothed
+    # end save smoothed
 
-    #build up the baseline correction
+    # from baseline correction, what segment was used?
+    # this we may not want to analyze for rupture forces...
     if BaseRange > 0.0:
         #z is in microns, and we required BaseRange to be in microns
         Nmax = (z < (z.max() - BaseRange)).sum()
@@ -445,15 +447,6 @@ for fn in lst[:N]:
 
             if len( i0_indx ) > 0 :
                 i0_new = i0_indx[-1] + i0
-
-#                # the maximal point may also be a good candidate, if
-#                # segment is not too short and the alternative
-#                # is more than middle to the left:
-#                if (i1 - i0_alt) > 20 and (i0_alt - i0_new) < (i1-i0)/2:
-#                    i0_new = max(i0_alt, i0_new)
-#                # if i0_new falls right from the estimated minimum,
-#                # then the guess went wrong, leave the original
-#                i0 = i0 if i0_new > i1 -3 else i0_new
             else:
                 i0_new = -1
 
@@ -563,6 +556,7 @@ for fn in lst[:N]:
         if not peakres:
             continue
 
+       # just a reminder:
        #  peakheader = ["index", "Dmax (%s)" %zunit, "time (s)",\
        #              "Fmax (%s)" %Funit, "L_raw",\
        #              'Loadingrate (nN/s)',\
@@ -574,19 +568,16 @@ for fn in lst[:N]:
         SaveData(peakheader, peakres,\
                 fout, "Analysis of individual peaks", report=rep)
 
-    #raw_input("Press ENTER to continue")
-
-    #Global report:
-    #how many local minima are found?
+    # Global report:
+    # how many local minima are found?
     if len(mini) > 0:
         #peakres has as many lines as many usable fit ranges were found!
         resline['Number_of_minima']= len(peakres)
     else:
         resline['Number_of_minima']= 0
-    #add the global minimum = maximal pulling force
-    #first the global one
+    # add the global minimum => maximal pulling force
     resline['Fmax_global']= F.min()
-    #then the minimum from the fitted ones. It is the maximal force we could fit
+    # then the maximal rupture force from the fitted ones. It is the maximal force we could fit
     resline['Fmax.analyzed']= F_max
     resline['Fmax.fitted']= F_max_fitted
     resline['Lmax.Fmax.analyzed']= L_max
@@ -614,8 +605,9 @@ for fn in lst[:N]:
             ext=ext, newplot=False)
 
 
-    # Now, the last, break away event:
+    # Now, the last, break away event, the break-away force
     # rk = [peakheader[ri] for ri in [3,5,6,8]]
+    # !!! this may need some refining... !!!
     rk = [f'Fmax, {Funit}', 'Loading_rate, nN/s', 'L', 'Fmax_fitted']
     print('Peak header', peakheader)
     if peakres and peakheader:
@@ -645,4 +637,7 @@ rep.close()
 
 #to read in R:
 #a <- read.table("Indentation-resilts-table.txt",as.is=T,
-#   col.names=c("filename","X","Y","E","dE","Z0","Dmax","dD","Dfitmax","F0","Fmax","chi2","singular"))
+i# col.names=c('file', 'x', 'y', 'N', 'F.max.global', 'F.max.anal', 'F.max.fit',
+# 'L.max.F.max', 'rate.F.max', 'adhesion.aJ.smooth', 'adhesion.aJ', 'F.breakaway',
+# 'loading.breakaway', 'L.breakaway', 'F.breakaway.fit'))
+
