@@ -22,7 +22,7 @@ if __name__ == '__main__':
     saving = False
 
     if len(args) < 2:
-        print("Call with the name of a jpk-force file")
+        print("Call with the name of a AFM-force file")
         sys.exit(0)
     else:
         if args[1] == "-s":
@@ -47,6 +47,8 @@ if __name__ == '__main__':
 
         N = len(args[1:])
 
+        # figure out which of the force classes can load it:
+        # (fortunately they are rather different)
         for i in args[1:]:
             if ".jpk-force" in i:
                 a = JPKforce(i)
@@ -59,6 +61,7 @@ if __name__ == '__main__':
                 print("No data found")
                 continue
             #end if
+            print(f'loaded / plot: {os.path.split(i)[-1]}')
 
             plt.cla()
             #find the extension segment:
@@ -67,7 +70,13 @@ if __name__ == '__main__':
 
                 #turned off baseline correction to have stalling data
                 #in the right position for jpk-force files
-                a.baseline( 0.3, order= 1)
+                # Occasionally we get weird curves when automatic point list
+                # is used...
+                try:
+                    a.baseline(0.3, order= 1)
+                except TypeError:
+                    print('Invalid baseline range!')
+                    continue
                 #a.find_contact_point()
                 # Z0 = Contact_point(a.distance, a.force, 90, 30, 'Gauss')
                 # Z = a.Z
@@ -76,6 +85,8 @@ if __name__ == '__main__':
                 unit = a.Z_unit
                 vunit = a.force_unit
 
+                # JPK has everything in SI, others may not...
+                # nm distance and nN force is nice... for example
                 if a.Z_unit == 'm':
                     Z = a.Z*1E6
                     unit = 'micron'
@@ -90,14 +101,14 @@ if __name__ == '__main__':
                 plt.plot(Z, F, '+', alpha=0.6)
             #end for
 
-            ttext = "Z piezo %s" %unit
+            ttext = f"Z piezo {unit}"
             plt.set_xlabel(ttext)
-            ttext = "Force, %s" %vunit
+            ttext = f"Force, {vunit}"
             plt.set_ylabel(ttext)
             plt.set_title(os.path.split(i)[-1])
 
             if saving:
-                fname = "%s.%s" %(os.path.splitext(i)[0], ext)
+                fname = f'{os.path.splitext(i)[0]}.{ext}'
                 pl.savefig(fname, \
                         dpi=150, transparent=True)
             #pl.draw()
@@ -105,8 +116,8 @@ if __name__ == '__main__':
             fig.canvas.draw_idle()
             #fig.canvas.draw()
             pl.ioff()
-            print("Spring constant %.6f" %a.force_constant)
-            print("Sensor response %.6f" %a.sensor_response)
+            print(f"Spring constant {a.force_constant:#.6g}")
+            print(f"Sensor response {a.sensor_response:#.6g}")
 
             if N > 1:
                 txt = input("Press ENTER")

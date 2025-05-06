@@ -23,8 +23,15 @@ def round(number: float, N:int = 0) -> float:
     return float(int(prec*number + 0.5))/prec
 # end round
 
-# device type decides to use: Brukderforce, JPKforce or Pavoneforce
+# parameters:
+# device types are set with switches -b for Bruker,
+# -j for JPK and -p for Pavone
+# -r range of background fit, default 0.3 = 30% at the end of the curve
+# -s segment number, -1 is the last segment, retraction
+# -f number of fit segments, 5 is default
+# -o output file name, 'results.md' is default
 
+# device type decides to use: Brukderforce, JPKforce or Pavoneforce
 device_types = {
                 '-b': Brukerforce,
                 '-j': JPKforce,
@@ -35,6 +42,7 @@ device_type= device_types['-b']
 base_range= 0.3
 Nseg= -1
 Nfit= 5
+fnout= 'results.md'
 
 if __name__ == '__main__':
     args = sys.argv[1:]
@@ -69,6 +77,14 @@ if __name__ == '__main__':
             Nfit = int(args[1])
             args.pop(0)
             args.pop(0)
+        elif args[0] == '-o':
+            if N < 2:
+                print('output file name is expected')
+                sys.exit(1)
+            fnout= args[1]
+            args.pop(0)
+            args.pop(0)
+
         else:
             filelist.append(args.pop(0))
 
@@ -76,19 +92,37 @@ if __name__ == '__main__':
     # looping through arguments
 # we are in batch mode
 
+fout = open(fnout, 'wt', encoding='UTF-8')
+fout.write('# detecting sensor response\n')
+
 for fn in filelist:
     if os.path.isfile(fn):
         try:
             a = device_type(fn)
-        except IOerror:
+        except IOError:
             continue
+    else:
+        print('file not found:', fn)
+        continue
 
+    # we spit out all to the current folder
+    ffn = os.path.split(fn)[-1]
     a.segment= a.segments[Nseg]
     print(f'using segment: {a.segment}')
 
     b = a.baseline(base_range, order=1)
 
-    fnout = f'{os.path.splitext(fn)[0]}-plot.png'
+    fnout = f'{os.path.splitext(ffn)[0]}-plot.png'
     sl = find_slope(a.Z, a.deflection_raw, Nfit= Nfit, verbose=True)
+    if sl == 0:
+        print('fit failed!')
+        continue
+
     pl.savefig(fnout, dpi=200, bbox_inches='tight', pad_inches=0)
-    print(f'{fn} slope is: {round(sl, 5)} V/{a.Z_unit}, sensitivity: {round(1/sl, 3)} {a.Z_unit}/V')
+    txt= f'{ffn} slope is: {sl:.5g} V/{a.Z_unit}, sensitivity: {1/sl:.4g} {a.Z_unit}/V'
+    print(txt)
+    fout.write(txt)
+    fout.write('\n')
+# end of looping through files
+fout.write('... done ...\n')
+fout.close()

@@ -13,6 +13,7 @@
 import numpy as nu
 from matplotlib.pyplot import ion, ioff
 ioff()
+from matplotlib import pyplot as pl
 
 from BatchAnalyzer import *
 from AFMforce import *
@@ -34,65 +35,75 @@ if __name__=="__main__":
         else:
             print("Invalid config file name: %s" %args[0])
 #            sys.exit(0)
-#end if __name__
+# end if __name__
 
-config = {'dir': './', 'outdir':'./Results', 'datatype':'JPK',\
-        'ext':'.png', 'dpi':150,\
-        'fmask': '*.jpk-force', 'BaseEnd': 0.3, 'BaseEndZ':-1.0,\
-        'temperature': 295.16, 'MinRange': 50, 'bgorder':1,\
-        'NoiseFactor': 3.0, 'SmoothRadius': 10, 'SensorResponse': -1.0,
-        'SpringConstant': -1.0, 'NLoadingRate':5, 'N':-1}
-#if SaveSmoothed is set to anything, the smootehened data will be saved
-#if FitSmoothed' is defined, use Fs instead of F for the peak analysis
-#NoiseRange is a force value in nN for thresholding forces
+config = {'dir': './', 'outdir':'./Results',
+          'DataType':'jpk',
+          'ext':'.png', 'dpi':150,
+          'fmask': '*.jpk-force',
+          'BaseEnd': 0.3, 'BaseEndZ':-1.0, 'BgOrder':1,
+          'temperature': 295.16,
+          'MinRange': 50, 'MinRangeZ': -1, # range in points or Z units for finding minima
+          'wave': False, # remove interferometric background
+          'NoiseFactor': 3.0,
+          'SmoothWidth': 10,
+          'SensorResponse': -1.0,
+          'SpringConstant': -1.0,
+          'NLoadingRate':5,
+          'N':-1}
+# if SaveSmoothed is set to anything, the smootehened data will be saved
+# if FitSmoothed' is defined, use Fs instead of F for the peak analysis
+# NoiseRange is a force value in nN for thresholding forces
+# EstimateSensorResponse to automatic finding sensor response
+# KeepBaseline to search for peaks in the full force curve, otherwise the
+#               baseline tail is cut off
 
-#ReadConfig can take care of the missing file, but fills up config
-#with default values properly
-config = ReadConf(configfile, config)
-#end if configfile
+# ReadConfig can take care of the missing file, but fills up config
+# with default values properly
+# if simplify is set, do not return lists, but their last elements only
+config = ReadConf(configfile, config, simplify= True)
 
 #global parameters -> to be replaced by config...
-indir = os.path.abspath(config['dir'][-1])
-outdir = os.path.abspath(config['outdir'][-1]) \
-                    if config['outdir'][-1] != "dir" else indir
+indir = os.path.abspath(config['dir'])
+outdir = os.path.abspath(config['outdir']) \
+                    if config['outdir'] != "dir" else indir
 
-dpi = config['dpi'][-1]
-ext = config['ext'][-1]
-datatype = config['datatype'][-1].lower()
+dpi = config['dpi']
+ext = config['ext']
+datatype = config['DataType'].lower()
 
-#ext = ".svg" #could also be .svg!
-ext = config['ext'][-1] #could also be .svg!
-fmask = config['fmask'][-1]
-#cut Z at this distance
-Zmax = config['Zmax'][-1] if 'Zmax' in config else -1.0
+ext = config['ext'] #could also be .svg!
+fmask = config['fmask']
+# cut Z at this distance
+Zmax = config['Zmax'] if 'Zmax' in config else -1.0
 
-#what portion (0...1) should the baseline estimator use?
+# what portion (0...1) should the baseline estimator use?
 # we make it large, because this should be a smooth curve
-BaseEnd = config['BaseEnd'][-1]
-BaseEndN = int(config['BaseEndN'][-1]) if 'BaseEndN' in config else -1
-BaseRange = config['BaseEndZ'][-1]
+BaseEnd = config['BaseEnd']
+BaseEndN = int(config['BaseEndN']) if 'BaseEndN' in config else -1
+BaseRange = config['BaseEndZ']
 
-Temp = config['temperature'][-1]
+Temp = config['temperature']
 #how many points to use for local minima search
-MinRangeZ = config['MinRangeZ'][-1] if 'MinRangeZ'  in config else -1.0
-MinRange = int(config['MinRange'][-1])
-NoiseFactor = config['NoiseFactor'][-1] #multiplier to find peaks out of noise
+MinRangeZ = config['MinRangeZ']
+MinRange = int(config['MinRange'])
+NoiseFactor = config['NoiseFactor'] #multiplier to find peaks out of noise
 #NoiseRange is a force value in nN for thresholding forces
 #it overrides NoiseFactor
-NoiseRange = config['NoiseRange'][-1] if 'NoiseRange' in config else -1.0
+NoiseRange = config['NoiseRange'] if 'NoiseRange' in config else -1.0
 
-bgorder = config['bgorder'][-1]
-SmoothRadius = int(config['SmoothRadius'][-1])
-SensorResponse = config['SensorResponse'][-1]
-SpringConstant = config['SpringConstant'][-1]
+bgorder = config['BgOrder']
+SmoothRadius = int(config['SmoothWidth'])
+SensorResponse = config['SensorResponse']
+SpringConstant = config['SpringConstant']
 
-NLoadingRate = int(config['NLoadingRate'][-1])
+NLoadingRate = int(config['NLoadingRate'])
 #end of filling in global parameters
 
 #get the files:
 lst = glob(os.path.join(indir,fmask))
 lst.sort()
-N = int( config['N'][-1] )
+N = int( config['N'] )
 if N < 0  or N > len(lst):
     N = len(lst)
 #end setting max number of curves
@@ -102,14 +113,16 @@ if not os.path.isdir(outdir):
     os.mkdir(outdir)
 
 #collect the results in a table formed by a list of lists
-resheader = ['filename', 'X, micron','Y, micron',\
-            'Number_of_minima', 'Fmax', 'Fmax.analyzed',
-            'Fmax.fitted',\
-            'Lmax.Fmax.analyzed', 'rate.Fmax',\
-            'Flast.max', 'Flast.rate', 'Llast', 'Flast.fitted.max']
-#end of preparation, now make some report:
+# resheader = ['filename', 'X, micron','Y, micron',\
+#             'Number_of_minima', 'Fmax', 'Fmax.analyzed',
+#             'Fmax.fitted',\
+#             'Lmax.Fmax.analyzed', 'rate.Fmax',\
+#             'Flast.max', 'Flast.rate', 'Llast', 'Flast.fitted.max']
+
+####################################################################
+########## end of preparation, now make some report:
 rep = Report(outdir,\
-        header="Force analysis for AFM force data files ver. 0.3\nStart",\
+        header="Force analysis for AFM force data files ver. 0.4\nStart",\
         add_time=False)
 rep.write('File path:', indir)
 rep.write('Generating results into:', outdir)
@@ -128,14 +141,18 @@ elif BaseEndN > 2:
 else:
     rep.write('Baseline uses',BaseEnd,'part of the range at the end')
 
-rep.write('Baseline is fitted with a', bgorder, 'order polynomial')
+if 'wave' in config and config['wave']:
+    rep.write('Remove interference background')
+else:
+    rep.write('Baseline is fitted with a', bgorder, 'order polynomial')
+
 if NoiseRange < 0:
     rep.write("Peaks are identified as", NoiseFactor, "times std of end part")
 else:
     rep.write("Peaks are identified as larger than", NoiseRange)
 
 rep.write("Smoothening uses a half-width of", SmoothRadius, "points")
-rep.write('Temperature is set to',Temp,'Kelvin'])
+rep.write('Temperature is set to',Temp,'Kelvin')
 if MinRangeZ < 0.0:
     rep.write('Range of local minima search is',MinRange,'points')
 else:
@@ -157,9 +174,16 @@ rep.write('********************************************')
 ############################################################################
 
 res = []
+resheader = []
 #loop through the file list and do the job:
 for fn in lst[:N]:
-    print("Loading: %s" %fn);
+    # collect the results in a list of dicts:
+    resline = {}
+
+    #extract path:
+    fn0 = os.path.splitext(os.path.split(fn)[-1])[0]
+
+    rep.write("Loading", fn0, color='cyan');
     if datatype == 'jpk':
         a = JPKforce(fn)
     elif datatype == 'bruker':
@@ -167,27 +191,22 @@ for fn in lst[:N]:
     elif datatype == 'pavone':
         a = Pavoneforce(fn)
     else:
-        print("Unknown data type")
+        rep.write("Unknown data type", color='red')
         continue
 
 
-    #extract path:
-    fn0 = os.path.splitext(os.path.split(fn)[-1])[0]
-
-    #collect the results in a list of dicts:
-    resline = []
 
     #get position:
     xy = a.position
     X,Y = xy if len(xy) != 0 else [0.0, 0.0]
 
-    #record the position and file name:
-    resline.append(fn0)
-    #convert X and Y to micrometers on storing them:
-    resline.append(X*1E6)
-    resline.append(Y*1E6)
+    # record the position and file name:
+    resline['filename']= fn0
+    # convert X and Y to micrometers on storing them:
+    resline['X, micron']= X*1E6
+    resline['Y, micron']= Y*1E6
 
-    #for thisname in ['approach','retract']:
+    # find the retraction segment
     segfound = False
     for i in a.segments:
         a.segment = i
@@ -197,13 +216,13 @@ for fn in lst[:N]:
     #end for segment in data
 
     if not segfound:
-        rep.write("No appropriate segment was found")
+        rep.write('No appropriate segment was found', color='red')
         #get on to the next segment candidate:
         continue
 
-    #set filtering max z-range:
+    # set filtering max z-range:
     if Zmax > 0:
-        if a.Z_unit == "m":
+        if a.Z_unit == 'm':
             a.Zmax = 1E-6*Zmax
         elif a.Z_unit == 'nm':
             a.Zmax = Zmax*1000.0
@@ -212,24 +231,34 @@ for fn in lst[:N]:
 
     #do we have data? This is temporary, we have not done adjustements
     z = a.Z
-    if len(z) == 0 or z[0] == z[-1]:
-        rep.write('Height data not found or invalid!');
+    zunit = a.Z_unit
+    if len(z) == 0 or z[0] == z[-1] or zunit=='':
+        rep.write('Height data not found or invalid!', color='red');
         continue;
+    #end if
 
     #get the force data for testing only
     if len(a.force) == 0  or a.force.min() == a.force.max():
-        rep.write("No force or invalid force data found!")
+        rep.write('No force or invalid force data found!')
         continue
     #end if
 
-    #baseline correction and find the contact point:
-    a.baseline(end = BaseEnd, range = BaseRange*1E-6, order= bgorder, endN=BaseEndN)
+
+    # baseline correction and find the contact point:
+    a.baseline(end= BaseEnd,
+               Zrange= BaseRange*1E-6,
+               order= bgorder,
+               endN= BaseEndN,
+               wave= config['wave'],
+               Nsmooth= SmoothRadius
+               )
     a.find_contact_point()
 
     if "EstimateSensorResponse" in config :
         SensorResponse = find_slope(a.Z, a.deflection_raw)
         SensorResponse = 1.0/SensorResponse if SensorResponse > 0 else -1.0
-        rep.write("Estimated new sensor response as:", SensorResponse, "m/V")
+        rep.write("Estimated new sensor response as:", SensorResponse, "m/V",
+                  color='green')
 
     if SensorResponse > 0.0:
         a.sensor_response = SensorResponse
@@ -237,51 +266,43 @@ for fn in lst[:N]:
         a.force_constant = SpringConstant
     #end if
 
-    zunit = a.Z_unit
-    if zunit == "" or a.Z.min() == a.Z.max():
-        rep.write("No height information was found in this segment, skipping")
-        continue
-    else:
-        rep.write("Found height data", i,"with unit", zunit)
-    #end if
     #convert any height to microns:
-    if zunit == "m":
+    if zunit == 'm':
         z = a.Z*1E6;
         D = a.distance * 1E6
-        zunit = "micro%s" %zunit
+        zunit = f'micro{zunit}'
         #a.Z is in meter:
 
-    elif zunit == "nm":
+    elif zunit == 'nm':
         z = a.Z / 1000;
         D = a.distance /1000
-        zunit = "micron"
+        zunit = 'micron'
         #a.Z is in nm:
     else:
-        rep.write("Unknown distance unit warning!!!!", zunit)
+        rep.write('Unknown distance unit warning!!!!', zunit, color='red')
 
     if a.force_unit == 'N':
         F = a.force * 1E9 #turn N to nN
-        Funit = "nano%s" %a.force_unit
+        Funit = f'n{a.force_unit}'
     else:
         F = a.force
         Funit = a.force_unit
     #length of data arrays:
     N = len(z)
 
-
-    rep.write("Found height data:", a.Z_type, " using", zunit, "units")
-    rep.write("We have a force range of", F.min(),":", F.max(),"using", Funit)
+    rep.write('Found height data:', a.Z_type, 'using', zunit, 'units')
+    rep.write('We have a force range of', F.min(),':', F.max(),'using', Funit)
 
     #here we can add later modifications to sensor response or the
     #force constant...
     #for now, let us use the recorded values!
     if a.force_constant < 0 or a.sensor_response < 0:
-        rep.write("Not calibrated data! Skipping")
+        rep.write('Not calibrated data! Skipping', color='red')
         continue
     #end if
 
     #prepare for outputs
-    fout = "%s-Pull-peaks" %fn0
+    fout = f'{fn0}-Pull-peaks'
 
     #the full command would be:
     #Ds = Smooth(D, radius = SmoothRadius, par=2, type="SavGol")
@@ -291,7 +312,7 @@ for fn in lst[:N]:
     if 'SaveSmoothed' in config:
         SaveData(['D, micron', 'F, nN'],\
                     zip(Ds, Fs),\
-                    os.path.join( outdir, '%s-smoothed-curve.txt' %fn0),
+                    os.path.join( outdir, f'{fn0}-smoothed-curve.txt'),
                 'Smoothened AFM curve', rep)
     #end save smoothed
 
@@ -305,118 +326,133 @@ for fn in lst[:N]:
     else:
         Nmax = int(N*(1.0 - BaseEnd))
 
-    #identify the limit for significant minima:
+    # identify the limit for significant minima:
     MinFLim = -NoiseFactor* F[Nmax:].std() if NoiseRange < 0 else -NoiseRange
     MinFLimS = -NoiseFactor* Fs[Nmax:].std() if NoiseRange < 0 else -NoiseRange
 
-    #find local minima:
+    # find local minima:
 
-    #if FindMinima gets a Zrange, it tries using dZ for defining
-    #the index range. So, if the user wants this, defined MinRangeZ:
+    # if FindMinima gets a Zrange, it tries using dZ for defining
+    # the index range. So, if the user wants this, defined MinRangeZ:
     minZ = D if MinRangeZ > 0.0 else []
 
-    #filter the minima for their relevance:
+    # filter the minima for their relevance:
     if not 'KeepBaseline' in config :
-        #we do not accept minimum peaks in the base line range!
-        mini = FindMinima(Fs[:Nmax], \
-                MinRange,\
-                Z=minZ[:Nmax], dZ=MinRangeZ, minf = MinFLimS)
+        # we do not accept minimum peaks in the base line range!
+        mini = FindMinima(Fs[:Nmax],
+                          MinRange,
+                          Z=minZ[:Nmax],
+                          dZ=MinRangeZ,
+                          minf = MinFLimS)
 
     else:
-        mini = FindMinima(Fs, MinRange, Z=minZ, dZ=MinRangeZ,\
-                    minf = MinFLimS)
+        mini = FindMinima(Fs,
+                          MinRange,
+                          Z= minZ,
+                          dZ= MinRangeZ,
+                          minf = MinFLimS)
 
-    #this should not happen, but I have seen this before:
+    # !!! this should not happen, but I have seen this before: !!!
     if 0 in mini:
         mini.pop(0);
 
     if len(mini) < 1:
-        rep.write("No significant minima were found")
+        rep.write("No significant minima were found", color='red')
     #else:
     #    Plot(Ds[mini], Fs[mini], fmt='ro', newplot=False)
     #end if
 
-    rep.write("Rupture force analysis")
+    rep.write("Rupture force analysis", color='blue')
 
-    #now comes a more detailed analysis, if anythhing:
-    #the z0 is more reliable than D <= 0, because of the noise in
-    #deflection... So, use the z0 estimation (z0 is subtracted):
+    # now comes a more detailed analysis, if anythhing:
+    # the z0 is more reliable than D <= 0, because of the noise in
+    # deflection... So, use the z0 estimation (z0 is subtracted):
     D0_indx = (z <= 0.0).sum()
-    #refine it to be closer to the flat part:
+    # refine it to be closer to the flat part:
     D0_indx = (F[D0_indx:] <= 0).nonzero()[0][0] + D0_indx
 
-    #shift to the new 0, we are pulling molecueles from here:
-    #first Ds, because D changes after:
+    # shift to the new 0, we are pulling molecueles from here:
+    # first Ds, because D changes after:
     Ds = Ds - D[D0_indx]
     D = D - D[D0_indx]
 
-    #first some information
+    # first some information
     Plot(D, F, fmt='+', alpha=0.3)
     Plot(Ds, Fs, fmt='y-', alpha=0.5, newplot=False)
+    Plot([Ds.min(), Ds.max()], [0,0], fmt='w-', linewidth= 2, newplot= False)
 
-    #a vertical indicator of the surface contact point:
-    Plot( (D[D0_indx],D[D0_indx]), (F.min(), F.max()), \
-            xlabel = "distance, %s" %zunit,\
-            ylabel = "force, %s" %Funit,\
+    # a vertical indicator of the surface contact point:
+    Plot((D[D0_indx],D[D0_indx]), (F.min(), F.max()),
+            xlabel = "distance, %s" %zunit,
+            ylabel = "force, %s" %Funit,
             fmt='r-',alpha=0.3, newplot=False)
 
-    #for debugging, it may help:
-    mini_new = [] #a list of [i0,i1] lists
-    #In the summary, we want the maximal pulling force and its
-    #fitted chain length:
+    # for debugging, it may help:
+    mini_new = [] # a list of [i0,i1] lists
+    # In the summary, we want the maximal pulling force and its
+    # fitted chain length:
     L_max = 0.0
     F_max = 0.0
     Fload_max= 0.0
     F_max_fitted = 0.0
 
     if len(mini) > 0:
-        txt = "%s-fitted-peaks.txt" %os.path.splitext(os.path.split(fn)[-1])[0]
+        txt = f"{fn0}-fitted-peaks.txt"
         fout = os.path.join(outdir,txt)
         peakres = []
 
         i0 = D0_indx
-        D1_old = 0.0    #at what distance did the previous rupture?
+        D1_old = 0.0    # at what distance did the previous rupture?
+
         if 'FitSmoothed' in config:
             MinFlim = MinFLimS
             F = Fs
             rep.write('Use smoothed data for fit!\n')
             rep.write('Using noise level:', MinFlim)
-            Plot( [D.min(), D.max()], [MinFlim, MinFlim], fmt= 'r--', alpha= 0.2, newplot=0)
+            Plot([D.min(), D.max()], [MinFlim, MinFlim], fmt= 'r--', alpha= 0.2, newplot=0)
 
-        print( 'Analyzing peak at position index:', mini )
+        # these are only local information we do not record
+        print('Analyzing peak at position index:', mini )
+
+        #############################################
+        # Peak analysis for this file / curve
+        #############################################
+
+        peakheader = []
         for i in range(len(mini)):
-            peakresline = [i]
+            # peakresline is the peak information row content
+            peakresline = {'index': i}
 
             #make sure it is a valid right index:
             i1 = min(mini[i], N)
 
             print("i0, i1:", i0, i1)
             if i0 >= i1:
-                i0 = max( i1 - MinRange, D0_indx)
+                i0 = max(i1 - MinRange, D0_indx)
                 print("Invalid range, overriding i0 to", i0)
                 if i0 >= i1:
                     print("Override failed, skipping")
                     continue
-            #end i0 validation
+            # end i0 validation
 
-            #refine i0:
-            #it is possible that the jump back took multiple points,
-            #including those would throw the fit
-            #we take the first point, which falls closer to 0 than the
-            #half standard deviation of the I values in this segment
+            # refine i0:
+            # it is possible that the jump back took multiple points,
+            # including those would throw the fit
+            # we take the first point, which falls closer to 0 than the
+            # half standard deviation of the I values in this segment
             i0_indx = (-0.5*F[i0:i1].std() < F[i0:i1] ).nonzero()[0]
             i0_alt = (F[i0:i1] == F[i0:i1].max()).nonzero()[0][-1] + i0
 
             if len( i0_indx ) > 0 :
                 i0_new = i0_indx[-1] + i0
 
-#                #the maximal point may also be a good candidate, if
-#                #segment is not too short and the alternative
-#                #is more than middle to the left:
+#                # the maximal point may also be a good candidate, if
+#                # segment is not too short and the alternative
+#                # is more than middle to the left:
 #                if (i1 - i0_alt) > 20 and (i0_alt - i0_new) < (i1-i0)/2:
 #                    i0_new = max(i0_alt, i0_new)
-#                #if i0_new falls right from the estimated minimum,
-#                #then the guess went wrong, leave the original
+#                # if i0_new falls right from the estimated minimum,
+#                # then the guess went wrong, leave the original
 #                i0 = i0 if i0_new > i1 -3 else i0_new
             else:
                 i0_new = -1
@@ -427,16 +463,16 @@ for fn in lst[:N]:
                 i0 = i0_alt
             elif i0_new > -1 and i0_new < (i1-3):
                 i0 = i0_new
-            #else it remains untouched
+            # else it remains untouched
 
-            #refine i1:
-            #the minimal distance between peeks is exactly MinRange
-            #the index from the smoothed data may be closer than
-            #MinRange to the previous peak, resulting in i0 = i1
-            #to avoid this, we do not allow the previous peak in range!
+            # refine i1:
+            # the minimal distance between peeks is exactly MinRange
+            # the index from the smoothed data may be closer than
+            # MinRange to the previous peak, resulting in i0 = i1
+            # to avoid this, we do not allow the previous peak in range!
 
-            #Smoothing smears out the peak, offsetting it slightly
-            #So, both should matter...
+            # Smoothing smears out the peak, offsetting it slightly
+            # So, both should matter...
             RefineR = int(max(MinRange, 2*SmoothRadius))
             ti0 = max(i1 - RefineR + 1, i0+1)
             ti1 = min(i1 + RefineR, len(F))
@@ -455,14 +491,14 @@ for fn in lst[:N]:
                 print("Too few points in segment!")
                 continue
 
-            peakresline.append(D[i1])
+            peakresline[f'Dmax, {zunit}'] = D[i1]
             #new in 2015-12-10:
             #add time of the rupture within the scan:
-            peakresline.append(a.t[i1])
+            peakresline['time, sec.']= a.t[i1]
             #local force maximum:
-            peakresline.append(-minF)
+            peakresline[f'Fmax, {Funit}']= -minF
             #local raw length since last rupture (L_raw):
-            peakresline.append(D[i1] - D1_old)
+            peakresline['L_raw'] = D[i1] - D1_old
 
             print("Fitting segment: %d - %d" %(i0,i1))
             #now fit the original data segment:
@@ -480,18 +516,18 @@ for fn in lst[:N]:
 
             print("Fitted C: %.5f, L: %.5f" %(fit['Ft'], fit['L']))
             #add loading rate
-            peakresline.append(ldrate)
+            peakresline['Loading_rate, nN/s']= ldrate
 
             #add fit results to the output details:
-            peakresline.append(fit['L'])
-            peakresline.append(fit['dL'])
+            peakresline['L']= fit['L']
+            peakresline['dL']= fit['dL']
             #local maximal force, fitted
             fF_max = fit['fitted'].max()
-            peakresline.append(fF_max)
+            peakresline['Fmax_fitted']= fF_max
 
-            #check and store the global maxima:
-            #the force is negative, so we go for the
-            #minimum, and the last one if they are equal
+            # check and store the global maxima:
+            # the force is negative, so we go for the
+            # minimum, and the last one if they are equal
             if F_max < -minF:
                 F_max = -minF
                 L_max = fit['L']
@@ -501,15 +537,19 @@ for fn in lst[:N]:
 #            peakresline.append(fit['F0'])
 #            peakresline.append(fit['dF0'])
 
-            peakresline.append(fit['lc'])
-            peakresline.append(fit['dlc'])
-            peakresline.append(fit['r2'])
-            peakresline.append(fit['chi2'])
+            peakresline['lc']= fit['lc']
+            peakresline['dlc']= fit['dlc']
+            peakresline['r2']= fit['r2']
+            peakresline['chi2']= fit['chi2']
             #number of points in this segment:
-            peakresline.append(i1-i0)
+            peakresline['N_of_points'] = i1-i0
 
             #add the results line to the detailed table:
-            peakres.append(peakresline)
+            peakres.append(list(peakresline.values()))
+
+            if not peakheader:
+                peakheader= list(peakresline.keys())
+
             #we need some inheritence here:
             D1_old = D[i1]
 
@@ -518,52 +558,81 @@ for fn in lst[:N]:
             i0 = i1
         #end for i
 
-        #if we erased a false peak, and we have only
-        #an empty list, then skip the end:
-        if peakres is  []:
+        # if we erased a false peak, and we have only
+        # an empty list, then skip the end:
+        if not peakres:
             continue
 
-        peakheader = ["index", "Dmax (%s)" %zunit, "time (s)",\
-                    "Fmax (%s)" %Funit, "L_raw",\
-                    'Loadingrate (nN/s)',\
-                    #fitted data comes here:
-                    "L", 'dL', "Fmax_fitted", \
-                   # "F0", "dF0",\
-                    'lc', 'dlc', 'r2', 'chi2', "N_of_points"]
+       #  peakheader = ["index", "Dmax (%s)" %zunit, "time (s)",\
+       #              "Fmax (%s)" %Funit, "L_raw",\
+       #              'Loadingrate (nN/s)',\
+       #              #fitted data comes here:
+       #              "L", 'dL', "Fmax_fitted", \
+       #             # "F0", "dF0",\
+       #              'lc', 'dlc', 'r2', 'chi2', "N_of_points"]
 
         SaveData(peakheader, peakres,\
                 fout, "Analysis of individual peaks", report=rep)
 
-        txt = "%s-Plot" %os.path.splitext(os.path.split(fn)[-1])[0]
-        fout = os.path.join(outdir,txt)
-        Plot([],[], filename = txt, outpath= outdir, dpi = dpi, \
-                ext=ext, newplot=False)
     #raw_input("Press ENTER to continue")
 
     #Global report:
     #how many local minima are found?
     if len(mini) > 0:
         #peakres has as many lines as many usable fit ranges were found!
-        resline.append( len(peakres) )
+        resline['Number_of_minima']= len(peakres)
     else:
-        resline.append( 0 )
+        resline['Number_of_minima']= 0
     #add the global minimum = maximal pulling force
     #first the global one
-    resline.append( -F.min() )
+    resline['Fmax_global']= F.min()
     #then the minimum from the fitted ones. It is the maximal force we could fit
-    resline.append( F_max )
-    resline.append( F_max_fitted )
-    resline.append( L_max )
-    resline.append( Fload_max )
-    #Now, the last one:
-    if len(peakres) != 0:
-        for ri in [3,5,6,8]:  resline.append( peakres[-1][ri] )
+    resline['Fmax.analyzed']= F_max
+    resline['Fmax.fitted']= F_max_fitted
+    resline['Lmax.Fmax.analyzed']= L_max
+    resline['rate.Fmax']= Fload_max
+
+    # Integral analysis (same as in AFM-force-analysis
+    intindx = (Fs < 0).nonzero()[0]
+    if len(intindx) > 0:
+        i0 = intindx[0]
+        intindx = (Fs[i0:] > 0).nonzero()[0]
+        i1 = i0 + intindx[0] if len(intindx) > 0 else len(Fs)
+
+    resline['Adhesion_energy_smooth, aJ']= nu.trapezoid(Fs[i0:i1], Ds[i0:i1])*1000.0 # aJ
+    resline['Adhesion_energy, aJ']= nu.trapezoid(F[i0:i1], D[i0:i1])*1000.0 # aJ
+
+    rep.write('Smoothed adhesion energy', resline['Adhesion_energy_smooth, aJ'], 'aJ', color='green')
+    rep.write('Raw adhesion energy', resline['Adhesion_energy, aJ'], 'aJ', color='green')
+
+    pl.fill_between(Ds[i0:i1], Fs[i0:i1],
+                    nu.zeros(i1-i0), color='yellow')
+
+    txt = "%s-Plot" %os.path.splitext(os.path.split(fn)[-1])[0]
+    fout = os.path.join(outdir,txt)
+    Plot([],[], filename = txt, outpath= outdir, dpi = dpi, \
+            ext=ext, newplot=False)
+
+
+    # Now, the last, break away event:
+    # rk = [peakheader[ri] for ri in [3,5,6,8]]
+    rk = [f'Fmax, {Funit}', 'Loading_rate, nN/s', 'L', 'Fmax_fitted']
+    print('Peak header', peakheader)
+    if peakres and peakheader:
+        # we need the index of each keys in the actual peak list
+        # to get the values for the last row
+        rv = {ri: peakres[-1][peakheader.index(ri)] for ri in rk}
     else:
-        resline = resline + [0, 0, 0, 0]
+        rv = {ri: 0 for ri in rk}
     #end if there was a last fit
+    print('Rv', rv)
+    resline.update(rv)
 
     rep.write("\n\n")
-    res.append(resline)
+    res.append(list(resline.values()))
+
+    if not resheader:
+        resheader = list(resline.keys())
 #end for filenames
 
 

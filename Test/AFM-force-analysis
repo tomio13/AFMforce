@@ -37,13 +37,16 @@ config = {'dir': './', 'outdir': './', 'dpi': 150, 'ext':'.png',
          'DataType': 'Bruker',
          'Z_offset': 10.0,
          'with_i0': False,
-         'BaseEnd': 0.3}
+         'BaseEnd': 0.3,
+          'wave': False # use interference correction baseline
+          }
 # not set by default
 #         'SensorResponse': -1,
 #         'SpringConstant': -1
 #         'Fmax': -1    maximal force used globally (limit the data below this)
 #         'Zmax': -1
 #         'Fmax.E': -1  maximal force used for the Hertz or JKR models
+#         'BaseEndZ' for maximal length of data used
 
 args = sys.argv[1:]
 if len(args) > 0:
@@ -54,12 +57,12 @@ if len(args) > 0:
         print('Invalid config file name')
         sys.exit(0)
     # end if argument file exists
-config = ReadConf(configfile, config)
+config = ReadConf(configfile, config, simplify= True)
 
 # all configuration values are single ones, no lists needed
 # clean it up!
-for k in config:
-    config[k] = config[k][-1]
+# for k in config:
+#     config[k] = config[k][-1]
 
 # now report the config:
 
@@ -70,12 +73,15 @@ if not os.path.isdir(outdir):
     os.mkdir(outdir)
 # end checking / making outdir
 
-rep = Report(outdir, header='AFM force curve analysis version 0.15', add_time= False)
+rep = Report(outdir, header='AFM force curve analysis version 0.2', add_time= False)
 
 # lazy dump of configuration:
 rep.write('Configuration settings:')
 for k,v in config.items():
     rep.write(k, 'is set to', v)
+
+if 'wave' in config and config['wave']:
+    rep.write('Interference background correction')
 
 rep.write('Force is set to nN, distance to micrometers')
 rep.write('************************')
@@ -166,51 +172,58 @@ for fn in lst:
         else:
             a.Zmax = Zmax
 
+    a_seg= 0
+    r_seg= 0
     for s in a.segments:
-        a.segment = s
-        if a.segment_name == 'approach':
-            # a.Z is piezo position,
-            # a.distance is corrected with deflection
-            Za = a.distance
-            if a.Z_unit == 'nm':
-                Za /= 1000.0
-            elif a.Z_unit == 'm':
-                Za *= 1E6
-
-            Fa = a.force
-            if a.force_unit == 'N':
-                Fa *= 1E9
-        elif a.segment_name == 'retract':
-            Zr = a.distance
-            if a.Z_unit == 'nm':
-                Zr /= 1000.0
-            elif a.Z_unit == 'm':
-                Zr *= 1E6
-
-            Fr = a.force
-            if a.force_unit == 'N':
-                Fr *= 1E9
-        # end if segment found
-    #end looping through the segments
-    if Za is None or Zr is None:
-        rep.write('Segments not found error!', color='red')
-        continue
+        if a.segment_name== 'approach':
+            a_seg= s
+        elif a.segment_name== 'retract':
+            r_seg= s
+    # end for segments
 
     #########################################
     # Now we start really working...
     # Baseline correction: forces at far distance are 0
-    if 'BaeEndZ' in config:
-        EndzN = (Za > (Za.max()-config['BaseEndZ'])).nonzero()[0][0]
-        Fa = Baseline(Za, Fa, end= config['BaseEnd'], order= bgOrder, endN= EndzN)['data']
-        EndzN = (Zr > (Zr.max()-config['BaseEndZ'])).nonzero()[0][0]
-        Fr = Baseline(Zr, Fr, end= config['BaseEnd'], order= bgOrder, endN= EndzN)['data']
 
-    else:
-        EndzN = int(Za.size * config['BaseEnd'])
-        Fa = Baseline(Za, Fa, end= config['BaseEnd'], order= bgOrder)['data']
-        EndzN = int(Zr.size * config['BaseEnd'])
-        Fr = Baseline(Zr, Fr, end= config['BaseEnd'], order= bgOrder)['data']
-    # end if baseline correction
+
+
+    for s in (a_seg, r_seg):
+        a.segment = s
+
+        # we do background correction here, because the function in the class
+        # is more powerful
+        if 'BaseEndZ' in config:
+            b= a.baseline(order= bgOrder,
+                   end= config['BaseEnd'],
+                   Zrange= config['BaseEndZ'],
+                   wave= config['wave'],
+                   Nsmooth= Wsmooth)
+        else:
+            b= a.baseline(order= bgOrder,
+                   end= config['BaseEnd'],
+                   wave= config['wave'],
+                   Nsmooth= Wsmooth)
+
+
+        if a.Z_unit == 'nm':
+            multiplier = 1E-3
+        elif a.Z_unit == 'm':
+            multiplier = 1E6
+
+        if a.force_unit == 'N':
+            fmultiplier= 1E9
+
+        if a.segment_name == 'approach':
+            Za = a.distance * multiplier
+            Fa = a.force * fmultiplier
+
+        elif a.segment_name == 'retract':
+            Zr = a.distance * multiplier
+            Fr = a.force * fmultiplier
+    #end looping through the segments
+    if Za is None or Zr is None:
+        rep.write('Segments not found error!', color='red')
+        continue
 
     # find the surface contact on the retraction curve, because
     # this often has adhesion, thus negative forces, which makes
@@ -302,13 +315,16 @@ for fn in lst:
     # find the negative area in the return curve:
     # the contact point is, where the Frs first crosses the axis
     # this was identified with ContactPoint above, setting Z0
-    intindx = (Zrs < 0).nonzero()[0]
+    intindx = (Zr< 0).nonzero()[0]
     if len(intindx) < 1:
         # this should not happen:
         rep.write('Contact point not defined error!', color= 'red')
+        rep.write('Z retract has a minimum of:', Zr.min(),
+                  'micrometer', color= 'cyan')
         pl.savefig(os.path.join(outdir, '%s-summary-plot%s' %(fnn, ext)), dpi= dpi,
             bbox_inches= 'tight', pad_inches= 0)
-        continue
+        # continue
+        intindx= 0
     else:
         intindx = intindx[-1]
 
@@ -326,9 +342,11 @@ for fn in lst:
                   )
 
     # we need a noise level to tell where is the last jump apart if there is any
+    EndzN = int(len(Fr)*config['BaseEnd']) if 'BaseEndZ' not in config else (Zr >(Zr.max()- config['BaseEndZ'])).sum()
     noiselevel = min(-5*Frs[-EndzN:].std(), Frs[-EndzN:].min())
     # we estimate the jump apart happened when the force curve last
     # came above this value
+    # ijump are all indices where Frs < noise level:
     ijump = (Frs < noiselevel).nonzero()[0]
 
     # adhesion force:
@@ -340,6 +358,7 @@ for fn in lst:
     if len(ijump) > 0:
         is_adhesion = True
         # we have some adhesion events!
+        # The last index in adhesion is the jump away point
         ijump = ijump[-1]
         # the work under F=0, we do on the surface until we can
         # break away
