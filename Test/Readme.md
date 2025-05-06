@@ -26,3 +26,13 @@ matches the data, find maximal adhesion force, adhesion energy,
 contact thickness, etc. A bit of heuristic treatment, but it
 is often useful to have a generic idea of the force distance
 curves.
+
+# AFMPullAnalysis
+analyze the retraction part of the curve, identify the maximum
+adhesion force, the adhesion energy, but also when connection
+was broken, whether there are saw-tooth like segments. If so,
+try fitting them with a worm-like-chain model and list up all
+break-away events.
+Save the last break away event since that is the one where the
+contact really broke.
+
