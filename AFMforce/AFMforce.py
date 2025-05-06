@@ -652,6 +652,7 @@ class AFMforce(object):
         return base
     #end of baseline
 
+
     def find_contact_point(self):
         """ identify the contact point for this segment using the
             Contact_point generic function.
