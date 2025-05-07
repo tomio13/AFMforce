@@ -595,7 +595,7 @@ def CalibrateData(jpkforcedata):
             'cantilever-calibration-info' in force_segment_header['environment']):
             force_cal = force_segment_header['environment']['cantilever-calibration-info']
             # print(force_cal)
-            if 'sensitivity' in force_cal:
+            if 'sensitivity' in force_cal and force_cal['sensitivity'] != 'n.a.':
                 sensitivity_txt = force_cal['sensitivity']
                 sensitivity, sens_unit = sensitivity_txt.split(' ',1)
                 sensitivity = float(sensitivity)
@@ -606,7 +606,8 @@ def CalibrateData(jpkforcedata):
 
                 res['Sensor response'] = sensitivity
                 res['Sensor response unit'] = sens_unit
-            if 'spring-constant' in force_cal:
+
+            if 'spring-constant' in force_cal and force_cal['spring-constant'] != 'n.a.':
                 txt = force_cal['spring-constant']
                 k, k_unit = txt.split(' ',1)
                 k = float(k)
