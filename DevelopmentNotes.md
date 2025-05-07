@@ -445,3 +445,16 @@ MIGRATION TO python 3:
     So, I added a sort of keys in evaluating the process and I am looking for the header as well.
     If I find it, it overwrites what I guessed from the slope values.
 
+2025-05-05:
+    updating the parameter structure of the AFMPullAnalysis script.
+    This also includes an update how the rows of the table of results is built, now into a
+    dict structure, which can be then completely dynamic. Its keys for the header, its values
+    are added up into the table body row-by-row (list of lists).
+    A maximal adhesion force (which can be colloidal interaction or molecular extension) and
+    an integral of adhesion energy (area under the force-distance curve) is added. The area is
+    defined between where the force curve first goes negative to where it first goes back above
+    the 0-force level.
+    The configuration list structures are now changed to simple values in the dict structure.
+
+2025-05-07:
+    Update the indentation script in a similar manner for config and result recording.

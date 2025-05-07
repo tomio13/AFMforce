@@ -21,10 +21,12 @@ from AFMforce import *
 from glob import glob
 import sys, os
 
-#from matplotlib import pyplot as pl
+# from matplotlib import pyplot as pl
+
+# default configuraiton file name:
 configfile = "config.txt"
 
-#Command line can provide a config file name:
+# Command line can provide a config file name:
 if __name__=="__main__":
     args = sys.argv[1:]
 
@@ -38,93 +40,97 @@ if __name__=="__main__":
             sys.exit(0)
 #end if __name__
 
-#default config values where needed:
-config = {'dir': './', 'outdir':'./Results', 'ext':'.png', \
-            'datatype': "JPK",\
-            'fmask': '*.jpk-force', 'Rball':2.15, 'FitType': 'ball',\
-            'PoissonRatio':0.3,\
-            'ConeAlpha': 20.0, 'Zmax': -1.0, 'Nrange': 30,\
-            'BaseEnd': 0.3, 'BaseEndN':-1, 'BaseEndZ':-1.0, 'order':1,\
-            'SpringConstant':-1.0, 'SensorResponse':-1.0, 'N':-1,\
-            'CompensateAttraction': False, 'UseSegment':'approach',\
-            'gamma': -1}
-#further switches:
+# default config values where needed:
+config = {'dir': './', 'outdir':'./Results', 'ext':'.png',
+            'DataType': "jpk",
+            'fmask': '*.jpk-force', 'Rball':2.15, 'FitType': 'ball',
+            'PoissonRatio':0.3,
+            'ConeAlpha': 20.0, 'Zmax': -1.0, 'Nrange': 30,
+            'BaseEnd': 0.3, 'BaseEndN':-1, 'BaseEndZ':-1.0, 'BgOrder':1,
+            'wave': False, # use an interferometric baseline correction
+            'SpringConstant':-1.0, 'SensorResponse':-1.0,
+            'CompensateAttraction': False, 'UseSegment':'approach',
+            'gamma': -1,
+            'N': -1}
+# further switches:
 #   WithWeights: apply weights in the fit
 #   UseSegment should be 'approach' or 'retract'
 #   WithGamma: if FitType is 'ball', use a linear term in the Hertz fit as well, fit_gamma()
 #   DumpResult: if set, dump the indentation / force data, the smoothed force
 #               data and the fitted results
 
-#parse the config file, and fill up the dict:
+# parse the config file, and fill up the dict:
 if not os.path.isfile(configfile):
     print("No configuarion file found, using defaults!")
-config = ReadConf(configfile, config)
-#end if configfile
+
+# simplify will turn the lists of config parameters to single values
+config = ReadConf(configfile, config, simplify= True)
 
 ###############################################################################
-#global parameters -> to be replaced by config...
-indir = os.path.abspath(config['dir'][-1])
-outdir = os.path.abspath(config['outdir'][-1]) if config['outdir'] != "dir" else indir
+# global parameters -> to be replaced by config...
+indir = os.path.abspath(config['dir'])
+outdir = os.path.abspath(config['outdir']) if config['outdir'] != "dir" else indir
 
-#ext = ".svg" #could also be .svg!
-ext = config['ext'][-1] #could also be .svg!
-fmask = config['fmask'][-1]
-datatype = config['datatype'][-1].lower()
-UseSegment = config['UseSegment'][-1]
+ext = config['ext'] # could also be .svg!
+fmask = config['fmask']
+datatype = config['DataType'].lower()
+UseSegment = config['UseSegment']
 
-Rball = config['Rball'][-1] #microns
-FitType = config['FitType'][-1] #ball or cone?
-ConeAlpha = config['ConeAlpha'][-1] #half opening angle of the tip cone in degrees
-PoissonRatio = config['PoissonRatio'][-1] #the poisson ratio of the sample
-Zmax = config['Zmax'][-1] #cut Z at this distance; default is -1 -> not set
-Fmax = config['Fmax'][-1] if 'Fmax' in config else None  #1 pN the max force analyzed
-#use a range to fit local lines and follow the slope of the curve
+Rball = config['Rball'] # microns
+FitType = config['FitType'] # ball or cone?
+ConeAlpha = config['ConeAlpha'] # half opening angle of the tip cone in degrees
+PoissonRatio = config['PoissonRatio'] # the poisson ratio of the sample
+Zmax = config['Zmax'] # cut Z at this distance; default is -1 -> not set
+Fmax = config['Fmax'] if 'Fmax' in config else None  #1 pN the max force analyzed
+# use a range to fit local lines and follow the slope of the curve
 # we need line 50-100 nm on 3000 microns containing like 6000 points...
-Nrange = int(config['Nrange'][-1])
-#what portion (0...1) should the baseline estimator use?
+Nrange = int(config['Nrange'])
+# what portion (0...1) should the baseline estimator use?
 # we make it large, because this should be a smooth curve
 
-BaseEnd = config['BaseEnd'][-1]
-BaseEndN = int(config['BaseEndN'][-1])
-BaseEndZ = config['BaseEndZ'][-1]
-order = int( config['order'][-1] )
+BaseEnd = config['BaseEnd']
+BaseEndN = int(config['BaseEndN'])
+BaseEndZ = config['BaseEndZ']
+order = int(config['BgOrder'])
 
-#overriding force parameters
-SpringConstant = config['SpringConstant'][-1]
-SensorResponse = config['SensorResponse'][-1]
+# overriding force parameters
+SpringConstant = config['SpringConstant']
+SensorResponse = config['SensorResponse']
 
-#Use weights to the fitting or not?
+# Use weights to the fitting or not?
 WithWeights = True if 'WithWeights' in config else False
 
-#go only from Fmin to compensate for strong attraction
-CompensateAttraction = bool(config['CompensateAttraction'][-1])
+# go only from Fmin to compensate for strong attraction
+CompensateAttraction = bool(config['CompensateAttraction'])
 WithGamma = True if 'WithGamma' in  config and FitType == 'ball' else False
-gamma = config['gamma'][-1]
+gamma = config['gamma']
 
-#end of filling in global parameters
+# end of filling in global parameters
 
-#get the files:
+# get the files:
 lst = glob(os.path.join(indir,fmask))
 lst.sort()
-N = int(config['N'][-1])
+
+N = int(config['N'])
 if N > len(lst) or N < 1:
     N = len(lst)
 
 if not os.path.isdir(outdir):
     # os.mkdir(outdir)
+    # makedirs is capable to create a full path tree
     os.makedirs(outdir)
 
-#collect the results in a table formed by a list of lists
-resheader = ['filename', 'X, micron','Y, micron',\
-            'E, kPa','dE, kPa',\
-            'G, mN/m', 'dG, mN/m',\
-            'Z0, micron', \
-            'Dmax, micron','dD, micron','dfitmax, micron', 'Rmax, micron', 'Rfit.max, micron',\
-            'F0, nN', 'Fmax, nN', 'chi2','r2', 'singular']
+# collect the results in a table formed by a list of lists
+# resheader = ['filename', 'X, micron','Y, micron',\
+#             'E, kPa','dE, kPa',\
+#             'G, mN/m', 'dG, mN/m',\
+#             'Z0, micron', \
+#             'Dmax, micron','dD, micron','dfitmax, micron', 'Rmax, micron', 'Rfit.max, micron',\
+#             'F0, nN', 'Fmax, nN', 'chi2','r2', 'singular']
 
 #end of preparation, now make some report:
 rep = Report(outdir,\
-        header="Indentation analysis for AFM force data files\nStart",\
+        header="Indentation analysis for AFM force data files v. 2.1\nStart",\
         add_time=False)
 rep.write('File path:', indir)
 rep.write('Generating results into:', outdir)
@@ -136,13 +142,13 @@ if UseSegment not in ["approach","retract"]:
     UseSegment = "approach"
 else:
     rep.write("Using segment:", UseSegment, "for the analysis")
-#end if valid UseSegment
+# end if valid UseSegment
 
 if FitType == 'ball':
     rep.write('Ball radius', Rball,'microns')
 else:
     rep.write('Cone (half)angle', ConeAlpha,'degrees')
-#end if FitType
+# end if FitType
 
 if WithGamma:
     rep.write('Include linear surface term in fit')
@@ -160,7 +166,8 @@ if Zmax > 0.0:
     rep.write('Cut Z distance range at:',Zmax,'microns')
 else:
     rep.write("Z range is not limited");
-#end if Zmax
+# end if Zmax
+
 rep.write("Background correction is based on:")
 if BaseEndN > 0:
     rep.write(BaseN,"number of points at the end")
@@ -168,14 +175,17 @@ elif BaseEndZ > 0.0:
     rep.write(BaseEndZ, "micron end segment")
 else:
     rep.write("the last",BaseEnd,"portion of the force curve")
-#end if BaseEnd
+# end if BaseEnd
+
+if 'wave' in config and config['wave']:
+    rep.write('Remove interference background')
+
 rep.write('Background correction with ',order,'th order curve')
 
 if Fmax is not None:
     rep.write('Maximal indentation force',Fmax,'nN')
 
 rep.write('Local ruler length',Nrange,'points')
-#rep.write('Baseline uses',BaseEnd,'part of the range at the end')
 
 if WithWeights:
     rep.write('Use weighted fitting!')
@@ -188,10 +198,14 @@ rep.write('********************************************\n')
 
 #collect the results in a list of lists:
 res = []
+resheader= []
+
 #loop through the file list and do the job:
 for fn in lst[:N]:
-    rep.write("Loading:", os.path.split(fn)[-1])
-    #calling the class with a file name loads the data:
+    fn0 = os.path.splitext(os.path.split(fn)[-1])[0]
+    rep.write("Loading:", fn0, color='cyan')
+
+    # calling the class with a file name loads the data:
     if datatype == 'jpk':
         a = JPKforce(fn);
     elif datatype == 'bruker':
@@ -199,21 +213,21 @@ for fn in lst[:N]:
     elif datatype == 'pavone':
         a = Pavoneforce(fn)
     else:
-        print('Unknown file format!')
+        rep.write('Unknown file format!', color='red')
         sys.exit(1)
 
     if a.dataset == {}:
-        print("No data found")
+        rep.write("No data found", color='red')
         continue
 
-    #setting segment resets Zmax in the class!
+    # setting segment resets Zmax in the class!
     if a.segments == []:
         #we have nothing
-        rep.write("Empty data set in",fn,"skipping...")
+        rep.write("Empty data set in",fn0,"skipping...", color='red')
         continue
-    #end if
+    # end if
 
-    #find the approach segment:
+    # find the approach segment:
     segfound = False
     for i in  a.segments:
         a.segment = i
@@ -224,9 +238,9 @@ for fn in lst[:N]:
     #end for
 
     if segfound:
-        rep.write("Found segment", UseSegment)
+        rep.write("Found segment", UseSegment, color='green')
     else:
-        rep.write("Segment not found, skipping");
+        rep.write("Segment not found, skipping", color= 'red');
         continue
     #end checking for the segment
 
@@ -235,8 +249,8 @@ for fn in lst[:N]:
         a.sensor_response = SensorResponse
     if SpringConstant > 0.0:
         a.force_constant = SpringConstant
-        print("Setting new spring constant")
-        print("unit:", a.force_unit)
+        rep.write("Setting new spring constant")
+        rep.write("unit:", a.force_unit)
     #end if override
 
     #Set Zmax and force it to meter, because the raw data is in meters
@@ -247,12 +261,8 @@ for fn in lst[:N]:
         elif a.Z_unit == 'nm':
             a.Zmax = Zmax*1000.0
 
-    #PATH:
-    #keep the file name without extension for further reference:
-    fn0 = os.path.splitext(os.path.split(fn)[-1])[0]
-
-    #this is the actual line of results in the table:
-    resline = []
+    # this is the actual line of results in the table:
+    resline= {}
 
     #get position:
     if len(a.position) == 2:
@@ -260,22 +270,23 @@ for fn in lst[:N]:
     else:
         X = Y = 0.0
 
-    #start storage: file, x, y,...
-    resline.append(fn0)
-    #convert positions to microns:
+    # start storage: file, x, y,...
+    resline['filename'] = fn0
+
+    # convert positions to microns:
     if a.position_unit == 'nm':
         X = X/1000
         Y = Y / 1000
     else:
         X = X*1E6
         Y = Y*1E6
-    resline.append(X)
-    resline.append(Y)
+    resline['X'] = X
+    resline['Y'] = Y
 
     zunit = a.Z_unit
 
     if zunit == "" or a.Z.min() == a.Z.max():
-        rep.write("No height information was found in this segment, skipping")
+        rep.write("No height information was found in this segment, skipping", color='red')
         continue
     else:
         rep.write("Found height data", i,"with unit", zunit)
@@ -293,7 +304,7 @@ for fn in lst[:N]:
         #a.Z is in nm:
         bend = BaseEndZ * 1000
     else:
-        rep.write("Unknown distance unit warning!!!!", zunit)
+        rep.write("Unknown distance unit warning!!!!", zunit, color='red')
 
     #shift to lowest z point, because we can not define a surface
     #as easily as for solid contract:
@@ -306,7 +317,13 @@ for fn in lst[:N]:
     print("baseline parameters:")
     print(BaseEnd, bend, BaseEndN)
 
-    bg = a.baseline(end= BaseEnd, range= bend, order= order, endN=BaseEndN, verbose=True)
+    bg = a.baseline(end= BaseEnd,
+                    Zrange= bend,
+                    order= order,
+                    endN=BaseEndN,
+                    wave= config['wave'],
+                    Nsmooth= Nrange,
+                    verbose=True)
 
     #get the force data:
     I = a.force
@@ -318,18 +335,18 @@ for fn in lst[:N]:
     elif Iunit == "nN":
         rep.write("Original data in nN")
     else:
-        rep.write("No force data or unknown units found, skipping...")
+        rep.write("No force data or unknown units found, skipping...", color='red')
         continue
     #end if newton
 
     if I.max() == I.min():
-        rep.write("Invalid force data range, skipping data...")
+        rep.write("Invalid force data range, skipping data...", color='red')
         continue
     #end if Irange
 
     print("We have a force range of %.3f : %.3f %s" %(I.min(),I.max(),Iunit))
     if len(z) < 100:
-        rep.write("Way too short dataset", len(z));
+        rep.write("Way too short dataset", len(z), color='red');
         continue
 
     #if we had force above, then we have deflection too.
@@ -340,10 +357,10 @@ for fn in lst[:N]:
         vD = vD * 1E6
         vDunit = 'micron'
     elif vDunit == 'nm':
-        vD = vD / 1000
+        vD = vD * 1000
         vDunit = 'micron'
     else:
-        rep.write("Deflection is not in meter WARNING!")
+        rep.write("Deflection is not in meter WARNING!", color='red')
 
 
     # we have a baseline corrected dataset
@@ -351,14 +368,18 @@ for fn in lst[:N]:
     # we need the first index where we reach negative vs. the established
     # base line:
     # SI = Smooth(I, 50, 10, "Gauss") #for a Gauss
-    SI = Smooth(I, Nrange, 2) #SavGol is the default
+    # SavGol is the default
+    SI = Smooth(I, radius= Nrange, par= 2, type='SavGol')
 
 
     # now convert... using 'auto' will estimate Z0
     # deflection0 is estimated form the last 10% of the curve
-    d = Indentation(z, Smooth( vD, Nrange, 2),\
-                z0= 0, deflection0 = 0,\
-                auto= True, verbose= False)
+    d = Indentation(z,
+                    Smooth(vD, radius= Nrange, par= 2, type='SavGol'),
+                    z0= 0,
+                    deflection0 = 0,
+                    auto= True,
+                    verbose= False)
 
     if Fmax is None:
         print("Fmax is not set")
@@ -392,7 +413,7 @@ for fn in lst[:N]:
         JKRgamma = -2.0*Imin/(3*nu.pi*Rball)
     else:
         JKRgamma = 0
-    #end if CompensateAttraction
+    # end if CompensateAttraction
 
     if WithGamma:
         H = fit_gamma(d['D'], I,\
@@ -439,10 +460,8 @@ for fn in lst[:N]:
             xlabel="indentation, microns",\
             ylabel="force, nN")
 
-    #Plot(d['D'],Smooth(I),fmt='g-',alpha=0.3, newplot=False)
-    #Plot(Smooth( d['D']-d0, Nrange, 2),SI,fmt='g-',alpha=0.7, newplot=False)
-    Plot( d['D']-d0, SI,fmt='g-',alpha=0.7, newplot=False)
-    Plot(H['x']-d0, H['fitted'],fmt='r-', newplot=False, \
+    Plot(d['D']-d0, SI,fmt='g-',alpha=0.7, newplot=False)
+    Plot(H['x']-d0, H['fitted'],fmt='r-',  newplot=False,
             filename= os.path.join(outdir,fout), ext=ext)
 
     rep.write("Elasticity evaluation with Hertz model:")
@@ -451,90 +470,105 @@ for fn in lst[:N]:
     rep.write('Surface tension term with extended Hertz model:')
     rep.write('Gamma (mN/m):', Gamma, '+/-', dGamma, 'mN/m')
 
-    #collect output data:
+    # collect output data:
     #'filename', 'X, micron','Y, micron', -> done at the beginning of the loop
     # 'E, kPa','dE, kPa','Z0, micron', \
-    resline.append(H['E'])
-    resline.append(H['dE'])
-    resline.append(Gamma); resline.append(dGamma)
-    #Z0 in microns:
-    #find the 0 indentation in the z array,
-    #but the fit may have not worked, pushing this out to
-    #unused areas...
-    #we have shifted Z, because we needed so far the relative
-    #value only. To get some kind of topography, we need it back:
-    resline.append( z[min( ((d['D'] - d0)< 0).sum(), len(z)-1)] + zoffset)
+    resline['E, kPa'] = H['E']
+    resline['dE, kPa'] = H['dE']
+    resline['G, mN/m']= Gamma
+    resline['dG, mN/m'] = dGamma
+    # Z0 in microns:
+    # find the 0 indentation in the z array,
+    # but the fit may have not worked, pushing this out to
+    # unused areas...
+    # we have shifted Z, because we needed so far the relative
+    # value only. To get some kind of topography, we need it back:
+    resline['Z0, micron'] = z[min( ((d['D'] - d0)< 0).sum(), len(z)-1)] + zoffset
 
-    #add: 'Dmax, micron','dD, micron','dfitmax, micron',\
-    #try finding the max. indentation in the data (at the real Fmax):
+    # add: 'Dmax, micron','dD, micron','dfitmax, micron',\
+    # try finding the max. indentation in the data (at the real Fmax):
     Dmax = max(d['D'][0] - d0, 0)
     DfitMax = max(H['x'].max() -d0,0)
 
-    #radius of contact:
+    # radius of contact:
     if FitType == 'ball':
         dR_exp_max = nu.sqrt( Dmax*(2*Rball - Dmax) )
         dR_max = nu.sqrt(DfitMax*(2*Rball - DfitMax))
     else:
-        #this is an ideally sharp cone
-        #this overestimates delta, underestimates the radius
+        # this is an ideally sharp cone
+        # this overestimates delta, underestimates the radius
         dR_exp_max = Dmax*nu.tan(theta) #theta is ConeAlpha in radians
         dR_max = DfitMax*nu.tan(theta)
 
-    resline.append( Dmax )
-    #error of height is the same as of D0
-    resline.append(H['dd0'])
-    #this is the maximal indentation at the Fmax in the fit:
-    resline.append(DfitMax)
+    resline['Dmax, micron'] = Dmax
+    # error of height is the same as of D0
+    resline['dD, micron'] = H['dd0']
+    # this is the maximal indentation at the Fmax in the fit:
+    resline['dfitmax, micron'] = DfitMax
 
-    #add the radius of indentation footprint in microns:
-    resline.append( dR_exp_max )
-    #and the radius of indentation of the maximal fitted indentation:
-    resline.append( dR_max )
+    # add the radius of indentation footprint in microns:
+    resline['Rmax, micron'] = dR_exp_max
+    # and the radius of indentation of the maximal fitted indentation:
+    resline['Rfit.max, micron'] = dR_max
 
-    #add: 'F0, nN', 'Fmax, nN', 'chi2','singular']
-    resline.append(H['F0'])
-    #this is the maximal force measured... This indicates
-    #if the AFM could keep the suggested Fmax.
-    #the fitted H['F0'] is the 0 offset:
-    resline.append(I.max() - H['F0'])
+    # add: 'F0, nN', 'Fmax, nN', 'chi2','singular']
+    resline['F0, nN'] = H['F0']
+    # this is the maximal force measured... This indicates
+    # if the AFM could keep the suggested Fmax.
+    # the fitted H['F0'] is the 0 offset:
+    resline['Fmax, nN'] = I.max() - H['F0']
     # chi2 error:
     # change it to average, so it gets comparable to
     # other methods
     # resline.append( ((H['fitted']-H['y'])**2).sum())
     chi2 = ((H['fitted']-H['y'])**2).mean() if len(H['fitted']) > 0 else -1
-    resline.append(chi2)
-    #regression coefficient of the fit:
-    resline.append( H['r2'])
-    #is it a valid fit?
-    #if the fit was singular it is not probable
-    resline.append(int(H['singular']))
-    res.append(resline)
+    resline['chi2'] = chi2
+    # regression coefficient of the fit:
+    resline['r2'] = H['r2']
+    # is it a valid fit?
+    # if the fit was singular it is not probable
+    resline['singular'] = int(H['singular'])
+
+    res.append(list(resline.values()))
+
+    if not resheader:
+        resheader= list(resline.keys())
 
     if 'DumpResult' in config:
-        rep.write('Dumping results')
+        rep.write('Dumping results', color='blue')
         fout = "%s-force-data.txt" %fn0
         outfile = os.path.join( outdir, fout)
-        DumpData = [ d['D']- d0, I, SI,\
-                nu.pad(H['x']-d0, (0, len(I) - len(H['x'])),\
-                        mode='constant', constant_values= 0),\
-                nu.pad(H['fitted'], (0, len(I) - len(H['x'])),\
-                        mode='constant', constant_values= 0)]
-        DumpHeader = ['indentation, micron', 'force, nN', 'smoothed force, nN',\
+        # a list of data arrays (lists) to be dumped
+        DumpData = [d['D']- d0,
+                    I,
+                    SI,
+                    nu.pad(
+                        H['x']-d0,
+                        (0, len(I) - len(H['x'])),
+                        mode='constant',
+                        constant_values= 0
+                        ),
+                     nu.pad(
+                         H['fitted'],
+                         (0, len(I) - len(H['x'])),
+                        mode='constant',
+                        constant_values= 0
+                        )]
+        DumpHeader = ['indentation, micron', 'force, nN', 'smoothed force, nN',
                 'fit indentation, micron', 'fitted force, nN']
-        SaveData( DumpHeader, zip( *DumpData ), outfile, report= rep)
+        SaveData(DumpHeader, zip(*DumpData), outfile, report= rep)
 
-    #input(prompt= "Press ENTER to continue")
-    rep.write("\n\n")
-#end for filenames
+    # input(prompt= "Press ENTER to continue")
+# end for filenames
 
 
 SaveData(resheader, res, \
-        os.path.join(outdir,"Indentation-results.dat" ),\
+        os.path.join(outdir,"Indentation-results.dat"),\
         "Results of indentation analysis", report=rep)
 
-rep.write("Analysis done", True)
+rep.write("\nAnalysis done\n", withtime= True, color='green')
 rep.close()
 
-#to read in R:
+# to read in R:
 #a <- read.table("Indentation-resilts-table.txt",as.is=T,
 #   col.names=c("filename","X","Y","E","dE","Z0","Dmax","dD","Dfitmax","F0","Fmax","chi2","singular"))
