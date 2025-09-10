@@ -428,7 +428,7 @@ class AFMforce(object):
         if "force" in a and 'deflection' in a['force']:
             defl  = a["force"]['deflection']
         else:
-            return nu.empty(0) 
+            return nu.empty(0)
 
         if self._indx_.size > 0:
             return defl[self._indx_]
@@ -613,6 +613,10 @@ class AFMforce(object):
                                        verbose= verbose)
 
         else:
+            # it may be optically ideal to try using
+            # distance and deflection...
+            # but according to my test, in general Z is close enough
+            #
             # call the generic baseline correction:
             # print('polynomial baseline')
             base = Baseline(self.Z,

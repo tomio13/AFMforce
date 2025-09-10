@@ -357,7 +357,7 @@ for fn in lst[:N]:
         vD = vD * 1E6
         vDunit = 'micron'
     elif vDunit == 'nm':
-        vD = vD * 1000
+        vD = vD / 1000
         vDunit = 'micron'
     else:
         rep.write("Deflection is not in meter WARNING!", color='red')

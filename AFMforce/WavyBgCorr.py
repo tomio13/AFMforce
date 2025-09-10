@@ -4,7 +4,7 @@
 
 from AFMforce.Smooth import Smooth
 from matplotlib import pyplot as pl
-from numpy import sin, pi, diff, polyfit, polyval, abs
+from numpy import sin, pi, diff, polyfit, polyval, abs, log, floor
 from scipy.optimize import leastsq
 
 __all__ = ['bg_wave_fit', 'fit_wave_background']
@@ -68,17 +68,31 @@ def fit_wave_background(distance, force,
     if len(distance) != len(force):
         raise ValueError('length mismatch in arrays!')
 
+    # guess order of X-axis:
+    order_mag = 10**(floor(log(distance.max() - distance.min())/log(10.0) + 0.5))
+
     # get a linear fit to the background as a guess
     fit_line = polyfit(distance, force, 1)
     force_corr = force - polyval(fit_line, distance)
 
     # positive to negative transition in force happens at every half
     # wavelength... to guess omega, we use that:
-    omega_guess = pi/diff(distance[diff(Smooth(force_corr, 30) > 0).nonzero()[0]]).mean()
+    # omega_guess = pi/diff(distance[diff(Smooth(force_corr, 30) > 0).nonzero()[0]]).mean()
+    # try underestimating it:
+    omega_guess = pi/diff(
+            distance[diff(Smooth(force_corr, smooth_radius) > 0).nonzero()[0]]
+            ).mean() /2.0
+    # print('guessing omega:', omega_guess)
+    # print('amplitude guess:', force_corr.max())
+
 
     # now, get a background fit
     bg = leastsq(err_bg_wave_fit,
-                 [force_corr.max(), -0.001, omega_guess, 0.001, 0.0, fit_line[1], fit_line[0]],
+
+                 [force_corr.max(), -0.001/order_mag,
+                  omega_guess, 0.001/order_mag, 0.0,
+                  fit_line[1], fit_line[0]],
+
                  (distance, force),
                  maxfev= 1000,
                  col_deriv= True,

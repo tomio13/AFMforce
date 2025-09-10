@@ -458,3 +458,12 @@ MIGRATION TO python 3:
 
 2025-05-07:
     Update the indentation script in a similar manner for config and result recording.
+
+2025-09-09:
+    in the wave background correction use the smoothing radius in the omega estimation
+    It turns out that the wave fitting algorithm goes easily off if not fed with micrometer
+    data for distance. The initial parameters need better adjustment.
+    The slope parameters are adjusted according to the order of magnitude of the x-axis
+    data range, this way the fit is more stable.
+    The vD parameter in the AFMIndentation also had a bug for nanometer scale. It was not
+    divided but multiplied with 1000. Now, it is fixed.
