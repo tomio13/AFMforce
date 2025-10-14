@@ -176,7 +176,7 @@ def header_to_dict(txt):
         elif t[0] == '#':
             res['date'] = t[1:]
 
-        #these description files are key = value pairs if not comments
+        # these description files are key = value pairs if not comments
         elif '=' in t:
             key, tval = t.split('=',1)
             keylist = key.split('.')
@@ -197,13 +197,14 @@ def header_to_dict(txt):
                 #then consider it as a text:
                 else:
                     val = tval
-            #now we have val set
-            #print("value:", val)
-            #construct res with embedded dict set according to the
-            #names:
+            # now we have val set
+            # print("value:", val)
+            # construct res with embedded dict set according to the
+            # names:
+            ######### FIX ME !!!!!!!! #############
             c = res
             for k in keylist[:-1]:
-                if not k in c:
+                if k not in c:
                     c[k] = {}
                 # we step to the next level
                 c = c[k]
